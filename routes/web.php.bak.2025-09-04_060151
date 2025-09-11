@@ -1,0 +1,73 @@
+<?php
+
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\Admin\PostController;
+use App\Http\Controllers\Admin\UserController;
+
+/*
+|--------------------------------------------------------------------------
+| Web Routes
+|--------------------------------------------------------------------------
+*/
+
+/** 既存の welcome 画面は /welcome に移動（トップは front_public.php 側で定義） */
+Route::view('/welcome', 'welcome')->name('welcome');
+
+/** ダッシュボード（ログイン必須） */
+Route::view('/dashboard', 'dashboard')
+    ->middleware(['auth'])   // 必要なら ['auth','verified']
+    ->name('dashboard');
+
+/** 管理系 (/admin/...) */
+Route::prefix('admin')
+    ->middleware(['auth'])   // 必要なら 'verified' も
+    ->name('admin.')
+    ->group(function () {
+
+        // --- Posts ---
+        if (class_exists(PostController::class)) {
+            Route::resource('posts', PostController::class);
+        } else {
+            // コントローラ未実装でも 404 にしないスタブ
+            Route::get('posts', fn () => response('posts index (stub)', 200))->name('posts.index');
+            Route::get('posts/create', fn () => response('posts create (stub)', 200))->name('posts.create');
+            Route::post('posts', fn () => abort(501)); // 未実装
+        }
+
+        // --- Users ---
+        if (class_exists(UserController::class)) {
+            Route::resource('users', UserController::class)->except(['show']);
+        } else {
+            Route::get('users', fn () => response('users index (stub)', 200))->name('users.index');
+            Route::get('users/create', fn () => response('users create (stub)', 200))->name('users.create');
+        }
+    });
+
+/** プロフィール（Breeze がある場合のみ） */
+Route::middleware('auth')->group(function () {
+    if (class_exists(ProfileController::class)) {
+        Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
+        Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+        Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+    }
+});
+
+/** 認証ルート */
+if (file_exists(__DIR__.'/auth.php')) {
+    require __DIR__.'/auth.php';
+}
+
+/** 公開側ルート（存在すれば読み込み） */
+if (file_exists(__DIR__.'/front_public.php')) {
+    require __DIR__.'/front_public.php';
+}
+
+/* === FRONT_ROUTES_GUARD (do not duplicate) === */
+if (!\Illuminate\Support\Facades\Route::has('front.home')) {
+    \Illuminate\Support\Facades\Route::get('/', [\App\Http\Controllers\Front\HomeController::class, 'index'])->name('front.home');
+    \Illuminate\Support\Facades\Route::get('/posts', [\App\Http\Controllers\Front\PostController::class, 'index'])->name('front.posts.index');
+    \Illuminate\Support\Facades\Route::get('/posts/{slug}', [\App\Http\Controllers\Front\PostController::class, 'show'])->name('front.posts.show');
+    \Illuminate\Support\Facades\Route::get('/category/{slug}', [\App\Http\Controllers\Front\CategoryController::class, 'show'])->name('front.category.show');
+    \Illuminate\Support\Facades\Route::get('/tag/{slug}', [\App\Http\Controllers\Front\TagController::class, 'show'])->name('front.tag.show');
+}

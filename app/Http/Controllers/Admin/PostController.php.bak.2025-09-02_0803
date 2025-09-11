@@ -1,0 +1,165 @@
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
+use App\Models\Post;
+use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+
+class PostController extends Controller
+{
+    public function index()
+    {
+        $posts = Post::latest()->paginate(10);
+        return view('admin.posts.index', compact('posts'));
+    }
+
+    public function create()
+    {
+        return view('admin.posts.create', ['post' => new Post()]);
+    }
+
+    public function store(Request $request)
+    {
+        // 1) バリデーション
+        $data = $request->validate([
+            'title'        => ['required', 'string', 'max:255'],
+            'body'         => ['nullable', 'string'],
+            'thumbnail'    => ['nullable', 'image', 'max:4096'],
+            'published_at' => ['nullable', 'date'],
+        ]);
+
+        // 2) スラッグ重複回避
+        $slug = Str::slug($data['title']);
+        $base = $slug; $i = 2;
+        while (Post::where('slug', $slug)->exists()) { $slug = "{$base}-{$i}"; $i++; }
+
+        // 3) サムネイル保存（堅牢版）
+        $thumbPath = null;
+        if ($request->hasFile('thumbnail')) {
+            $thumbPath = $this->storeThumbnail($request->file('thumbnail'), 'store');
+        }
+
+        // 4) 作成
+        $post = Post::create([
+            'user_id'        => auth()->id(),
+            'title'          => $data['title'],
+            'slug'           => $slug,
+            'body'           => $data['body'] ?? null,
+            'thumbnail_path' => $thumbPath,
+            'published_at'   => $data['published_at'] ?? null,
+        ]);
+
+        return redirect()->route('admin.posts.edit', $post)->with('status', '作成しました');
+    }
+
+    public function edit(Post $post)
+    {
+        return view('admin.posts.edit', compact('post'));
+    }
+
+    public function update(Request $request, Post $post)
+    {
+        // 1) バリデーション
+        $data = $request->validate([
+            'title'        => ['required', 'string', 'max:255'],
+            'body'         => ['nullable', 'string'],
+            'thumbnail'    => ['nullable', 'image', 'max:4096'],
+            'published_at' => ['nullable', 'date'],
+        ]);
+
+        // 2) サムネイル更新
+        if ($request->hasFile('thumbnail')) {
+            // 旧ファイル削除（存在確認してから）
+            if ($post->thumbnail_path && Storage::disk('public')->exists($post->thumbnail_path)) {
+                Storage::disk('public')->delete($post->thumbnail_path);
+            }
+            $post->thumbnail_path = $this->storeThumbnail($request->file('thumbnail'), 'update');
+        }
+
+        // 3) タイトル変更時はスラッグ更新
+        if ($post->title !== $data['title']) {
+            $slug = Str::slug($data['title']);
+            $base = $slug; $i = 2;
+            while (Post::where('slug', $slug)->where('id', '!=', $post->id)->exists()) {
+                $slug = "{$base}-{$i}";
+                $i++;
+            }
+            $post->slug = $slug;
+        }
+
+        // 4) 本文・公開日など更新
+        $post->fill([
+            'title'        => $data['title'],
+            'body'         => $data['body'] ?? null,
+            'published_at' => $data['published_at'] ?? null,
+        ])->save();
+
+        return back()->with('status', '更新しました');
+    }
+
+    public function destroy(Post $post)
+    {
+        if ($post->thumbnail_path && Storage::disk('public')->exists($post->thumbnail_path)) {
+            Storage::disk('public')->delete($post->thumbnail_path);
+        }
+        $post->delete();
+
+        return redirect()->route('admin.posts.index')->with('status', '削除しました');
+    }
+
+    /**
+     * サムネイル保存（確実に保存する堅牢版）
+     */
+    private function storeThumbnail(UploadedFile $file, string $action): ?string
+    {
+        try {
+            $disk = Storage::disk('public');
+
+            // ディレクトリを必ず用意
+            $disk->makeDirectory('thumbnails');
+
+            // 1st: putFile（Flysystem経由）
+            $path = $disk->putFile('thumbnails', $file);
+            Log::info("UPLOAD DEBUG@{$action} putFile", ['path' => $path]);
+
+            if ($path && $disk->exists($path)) {
+                return $path;
+            }
+
+            // 2nd: putFileAs（任意ファイル名）
+            $name = (string) Str::uuid() . '.' . $file->guessExtension();
+            $path = 'thumbnails/' . $name;
+            $stored = $disk->putFileAs('thumbnails', $file, $name);
+            Log::info("UPLOAD DEBUG@{$action} putFileAs", ['stored' => $stored, 'path' => $path]);
+
+            if ($stored && $disk->exists($path)) {
+                return $path;
+            }
+
+            // 3rd: ストリーム書き込みのフォールバック
+            $stream = fopen($file->getRealPath(), 'r');
+            $disk->put($path, $stream);
+            if (is_resource($stream)) fclose($stream);
+            Log::info("UPLOAD DEBUG@{$action} put(stream)", ['path' => $path, 'exists' => $disk->exists($path)]);
+
+            if ($disk->exists($path)) {
+                return $path;
+            }
+
+            Log::error("UPLOAD DEBUG@{$action} failed to store file by all strategies.");
+            return null;
+
+        } catch (\Throwable $e) {
+            Log::error("UPLOAD DEBUG@{$action} exception", [
+                'message' => $e->getMessage(),
+                'trace'   => $e->getTraceAsString(),
+            ]);
+            return null;
+        }
+    }
+}

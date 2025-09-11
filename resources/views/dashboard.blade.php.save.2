@@ -1,0 +1,50 @@
+php artisan view:clear{{-- 
+/opt/bitnami/laravel/resources/views/dashboard.blade.php --}} <x-app-layout>
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            {{ __('ダッシュボード') }}
+        </h2>
+    </x-slot>
+
+    <div class="py-12">
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                <div class="p-6 text-gray-900">
+                    <p class="mb-6">ここから各機能へ移動できます。</p>
+
+                    {{-- 見出しを「メニュー」に変更 --}}
+                    <h3 class="mb-3 font-semibold text-gray-700">メニュー</h3>
+
+                    {{-- ボタン群 --}}
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {{-- 投稿一覧 --}}
+                        <a href="{{ url('/admin/posts') }}"
+                           class="inline-flex items-center justify-center rounded-md border border-gray-300 px-4 py-3 text-gray-700 hover:bg-gray-50">
+                            投稿一覧
+                        </a>
+
+                        {{-- 新規投稿（タイトル/本文/サムネ/日付） --}}
+                        <a href="{{ url('/admin/posts/create') }}"
+                           class="inline-flex items-center justify-center rounded-md border border-gray-300 px-4 py-3 text-gray-700 hover:bg-gray-50">
+                            新規投稿
+                        </a>
+
+                        {{-- ユーザー管理 --}}
+                        <a href="{{ url('/admin/users') }}"
+                           class="inline-flex items-center justify-center rounded-md border border-gray-300 px-4 py-3 text-gray-700 hover:bg-gray-50">
+                            ユーザー管理
+                        </a>
+
+                        {{-- ユーザー追加（管理画面） --}}
+                        <a href="{{ url('/admin/users/create') }}"
+                           class="inline-flex items-center justify-center rounded-md border border-gray-300 px-4 py-3 text-gray-700 hover:bg-gray-50">
+                            ユーザー追加
+                        </a>
+                    </div>
+
+                    {{-- ※ 一般ユーザー登録/ログイン、管理者ログインは削除済み --}}
+                </div>
+            </div>
+        </div>
+    </div>
+</x-app-layout>

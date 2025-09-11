@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>投稿一覧</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body style="padding:20px; line-height:1.6;">
+  <h1>投稿一覧</h1>
+
+  @if (session('status'))
+    <p style="color:#0a7;">{{ session('status') }}</p>
+  @endif
+
+  <div style="margin:10px 0 20px; display:flex; gap:8px;">
+    <a href="{{ route('admin.posts.create') }}"
+       style="display:inline-block; padding:6px 10px; border:1px solid #999; border-radius:6px; text-decoration:none;">＋ 新規作成</a>
+    <a href="{{ url('/dashboard') }}"
+       style="display:inline-block; padding:6px 10px; border:1px solid #999; border-radius:6px; text-decoration:none;">ダッシュボード</a>
+  </div>
+
+  @if ($posts->count())
+    <ul style="padding-left:1.2em;">
+      @foreach ($posts as $post)
+        <li style="margin-bottom:8px;">
+          <a href="{{ route('admin.posts.edit', $post) }}">{{ $post->title ?: '(無題)' }}</a>
+          <small style="color:#666;"> / {{ optional($post->published_at)->format('Y-m-d H:i') }}</small>
+
+          <form method="POST" action="{{ route('admin.posts.destroy', $post) }}"
+                style="display:inline; margin-left:8px;"
+                onsubmit="return window.confirm('本当に削除しますか？');">
+            @csrf
+            @method('DELETE')
+            <button type="submit" style="color:#c00; background:transparent; border:1px solid #c00; padding:2px 6px; border-radius:4px;">削除</button>
+          </form>
+        </li>
+      @endforeach
+    </ul>
+
+    <div style="margin-top:16px;">
+      {{ $posts->links() }}
+    </div>
+  @else
+    <p>投稿がありません。</p>
+  @endif
+</body>
+</html>

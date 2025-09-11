@@ -1,0 +1,38 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Post extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'title',
+        'body',
+        'thumbnail_path',
+        'published_at',
+        'slug',
+        'user_id',
+    ];
+
+    protected $casts = [
+        'published_at' => 'datetime',
+    ];
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    /**
+     * "0" や 空文字が入ってきたら NULL に矯正する
+     */
+    public function setThumbnailPathAttribute($value): void
+    {
+        $this->attributes['thumbnail_path'] =
+            ($value === '0' || $value === 0 || $value === '') ? null : $value;
+    }
+}

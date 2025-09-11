@@ -1,0 +1,35 @@
+@extends('front.layout')
+@section('title','記事一覧')
+@section('content')
+  <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+    <div class="lg:col-span-8">
+      <h1 class="text-2xl font-bold mb-4">記事一覧</h1>
+      @forelse($posts as $post)
+        <article class="bg-white rounded-lg shadow p-4 mb-4">
+          <h2 class="font-semibold text-xl">
+            <a href="{{ route('front.posts.show', $post->slug ?? '') }}" class="hover:underline">{{ $post->title }}</a>
+          </h2>
+          <p class="text-xs text-gray-500 mt-1">{{ $post->published_at ?? '' }}</p>
+          <div class="mt-2 text-sm">{{ \Illuminate\Support\Str::limit(strip_tags($post->body ?? ''), 180) }}</div>
+        </article>
+      @empty
+        <p>記事がありません。</p>
+      @endforelse
+      <div class="mt-6">{{ $posts->links() }}</div>
+    </div>
+    <aside class="lg:col-span-4">
+      <div class="bg-white rounded-lg shadow p-4">
+        <h3 class="font-semibold mb-3">タグ</h3>
+        <div class="flex flex-wrap gap-2">
+          @isset($tags)
+            @forelse($tags as $t)
+              <a href="{{ !empty($t->slug) ? route('front.tag.show',\$t->slug) : '#\ }}" class="px-2 py-1 text-sm rounded border hover:bg-gray-50">#{{ $t->name }}</a>
+            @empty
+              <span class="text-gray-500 text-sm">タグ未設定</span>
+            @endforelse
+          @endisset
+        </div>
+      </div>
+    </aside>
+  </div>
+@endsection

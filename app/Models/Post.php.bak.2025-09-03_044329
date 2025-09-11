@@ -1,0 +1,72 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Post extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'title',
+        'body',
+        'thumbnail_path',
+        'published_at',
+        'slug',
+        'user_id',
+        'category_id', // ← カテゴリIDを受ける場合は入れておくと安全
+    ];
+
+    protected $casts = [
+        'published_at' => 'datetime',
+    ];
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    /** "0" や 空文字が入ってきたら NULL に矯正する */
+    public function setThumbnailPathAttribute($value): void
+    {
+        $this->attributes['thumbnail_path'] =
+            ($value === '0' || $value === 0 || $value === '') ? null : $value;
+    }
+
+    public function category()
+    {
+        return $this->belongsTo(\App\Models\Category::class);
+    }
+
+    public function tags()
+    {
+        // ★ pivot(post_tag)にcreated_at/updated_atが無いのでタイムスタンプを使わない
+        return $this->belongsToMany(\App\Models\Tag::class);
+    }
+
+    /** フォーム入力に合わせて保存時にカテゴリ/タグを同期 */
+    protected static function booted(): void
+    {
+        // CLI 実行時（migrate等）はスキップ
+        if (app()->runningInConsole()) {
+            return;
+        }
+
+        // 保存前：category_id を反映（null可）
+        static::saving(function (self $post): void {
+            if (function_exists('request') && request()->has('category_id')) {
+                $post->category()->associate(request()->input('category_id') ?: null);
+            }
+        });
+
+        // 保存後：tags を sync
+        static::saved(function (self $post): void {
+            if (method_exists($post, 'tags') && function_exists('request') && request()->has('tags')) {
+                $tagIds = array_filter((array) request()->input('tags', []));
+                $post->tags()->sync($tagIds);
+            }
+        });
+    }
+}

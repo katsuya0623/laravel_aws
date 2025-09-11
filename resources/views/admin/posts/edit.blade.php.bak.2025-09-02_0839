@@ -1,0 +1,21 @@
+<x-app-layout>
+  <x-slot name="header"><h2 class="font-semibold text-xl">投稿編集</h2></x-slot>
+
+  <div class="p-6">
+    <form action="{{ route('admin.posts.update', $post) }}" method="POST" enctype="multipart/form-data" class="space-y-6">
+      @csrf
+      @method('PUT')
+
+      @include('admin.posts._form', ['post' => $post])
+
+      <div class="flex items-center gap-3">
+        <x-primary-button>更新</x-primary-button>
+        <form action="{{ route('admin.posts.destroy', $post) }}" method="POST" onsubmit="return confirm('削除しますか？')">
+          @csrf @method('DELETE')
+          <x-danger-button>削除</x-danger-button>
+          @includeIf('admin.posts._category_tags')
+</form>
+      </div>
+    </form>
+  </div>
+</x-app-layout>

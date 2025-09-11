@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>nibiにようこそ！（TEST）</title>
+
+  {{-- ★ 本番でも必ず効くフォールバックCSS（Tailwindビルド済み） --}}
+  <link rel="stylesheet" href="/build/tw.css?v={{ now()->timestamp }}">
+
+  {{-- (任意) Vite が使える環境ならこちらも効く --}}
+  @vite(['resources/css/app.css','resources/js/app.js'])
+
+  {{-- Tailwindが万一読めなくても最低限崩れないための保険 --}}
+  <style>
+    .fallback-center { min-height: 100svh; display: grid; place-items: center; }
+    .fallback-top-right { position: absolute; top: 1rem; right: 1rem; }
+    .logo { max-height: 6rem; width: auto; }
+    @media (min-width: 640px) {.logo { max-height: 7rem; }}
+    @media (min-width: 768px) {.logo { max-height: 8rem; }}
+  </style>
+</head>
+<body class="min-h-screen relative grid place-items-center antialiased bg-white dark:bg-gray-900 fallback-center">
+
+  {{-- 右上：ログイン系（Tailwindでも保険でも右上固定） --}}
+  @if (Route::has('login'))
+    <div class="absolute top-4 right-6 space-x-4 text-right fallback-top-right">
+      @auth
+        <a href="{{ url('/dashboard') }}" class="text-sm text-gray-700 dark:text-gray-300 underline">Dashboard</a>
+      @else
+        <a href="{{ route('login') }}" class="text-sm text-gray-700 dark:text-gray-300 underline">Log in</a>
+        @if (Route::has('register'))
+          <a href="{{ route('register') }}" class="text-sm text-gray-700 dark:text-gray-300 underline">Register</a>
+        @endif
+      @endauth
+    </div>
+  @endif
+
+  {{-- 画面ど真ん中のメイン --}}
+  <main class="text-center">
+    <img src="{{ asset('logo.svg') }}" alt="nibi logo" class="mx-auto logo">
+    <h1 class="mt-6 text-2xl md:text-3xl font-bold text-gray-800 dark:text-gray-100">
+      nibiにようこそ！（TEST）
+    </h1>
+    <p class="mt-2 text-gray-600 dark:text-gray-400">ここから開発を始めましょう。</p>
+  </main>
+
+  {{-- === LATEST_POSTS_BLOCK: 最新記事10件 === --}}
+  @php
+    // コントローラから $posts が来ていない場合のフォールバック取得
+    if (!isset($posts)) {
+        try {
+            $q = \Illuminate\Support\Facades\DB::table('posts');
+            if (\Illuminate\Support\Facades\Schema::hasColumn('posts','published_at')) {
+                $q->orderByDesc('published_at');
+            }
+            $posts = $q->orderByDesc('id')->limit(10)->get();
+        } catch (\Throwable $e) {
+            $posts = collect();
+        }
+    }
+  @endphp
+
+  @if($posts && count($posts))
+    <section class="w-full">
+      <div class="max-w-6xl mx-auto px-6 mt-16">
+        <h2 class="text-2xl font-bold mb-6 text-gray-800 dark:text-gray-100">最新記事</h2>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          @foreach($posts as $post)
+            <article class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 text-left">
+              @if(!empty($post->thumbnail_path))
+                <img src="{{ asset($post->thumbnail_path) }}" alt="" class="w-full h-44 object-cover rounded mb-3">
+              @endif
+
+              <h3 class="font-semibold text-lg text-gray-900 dark:text-gray-50">
+                <a href="{{ !empty($post->slug) ? route('front.posts.show', $post->slug) : '#' }}" class="hover:underline">
+                  {{ $post->title }}
+                </a>
+              </h3>
+
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                {{ $post->published_at ?? '' }}
+              </p>
+
+              <p class="mt-2 text-sm text-gray-700 dark:text-gray-200">
+                {{ \Illuminate\Support\Str::limit(strip_tags($post->body ?? ''), 120) }}
+              </p>
+            </article>
+          @endforeach
+        </div>
+
+        <div class="mt-8 text-center">
+          <a href="{{ route('front.posts.index') }}" class="inline-flex px-4 py-2 rounded bg-emerald-600 text-white hover:bg-emerald-700">
+            記事一覧へ
+          </a>
+        </div>
+      </div>
+    </section>
+  @endif
+  {{-- === /LATEST_POSTS_BLOCK === --}}
+
+</body>
+</html>

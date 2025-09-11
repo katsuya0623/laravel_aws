@@ -1,0 +1,27 @@
+@extends('front.layout')
+@section('title', $post->title ?? 'Post')
+@section('content')
+  <article class="max-w-3xl">
+    <h1 class="text-3xl font-bold mb-2">{{ $post->title }}</h1>
+    <p class="text-sm text-gray-500 mb-6">
+      {{ $post->published_at ?? '' }}
+      @if(isset($postCats) && $postCats->count())
+        ・
+        @foreach($postCats as $c)
+          <a class="hover:underline" href="{{ route('front.category.show',$c->slug) }}">{{ $c->name }}</a>@if(!$loop->last)、@endif
+        @endforeach
+      @endif
+    </p>
+    @if(!empty($post->thumbnail_path))
+      <img src="{{ asset($post->thumbnail_path) }}" class="w-full rounded mb-6" alt="">
+    @endif
+    <div class="prose max-w-none">{!! $post->body !!}</div>
+    @if(isset($postTags) && $postTags->count())
+      <div class="mt-8">
+        @foreach($postTags as $t)
+          <a href="{{ !empty($t->slug) ? route('front.tag.show',\$t->slug) : '#\ }}" class="inline-block mr-2 mb-2 px-2 py-1 text-sm rounded border">#{{ $t->name }}</a>
+        @endforeach
+      </div>
+    @endif
+  </article>
+@endsection

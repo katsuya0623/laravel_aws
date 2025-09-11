@@ -1,0 +1,58 @@
+<?php
+
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\Admin\PostController;
+use App\Http\Controllers\Admin\UserController;
+
+/*
+|--------------------------------------------------------------------------
+| Web Routes
+|--------------------------------------------------------------------------
+*/
+
+Route::view('/', 'welcome')->name('home');
+
+/** ダッシュボード（ログイン必須） */
+Route::view('/dashboard', 'dashboard')
+    ->middleware(['auth'])   // 必要なら ['auth','verified']
+    ->name('dashboard');
+
+/** 管理系 (/admin/...) */
+Route::prefix('admin')
+    ->middleware(['auth'])   // 必要なら 'verified' も
+    ->name('admin.')
+    ->group(function () {
+
+        // --- Posts ---
+        if (class_exists(PostController::class)) {
+            Route::resource('posts', PostController::class);
+        } else {
+            // コントローラ未実装でも 404 にしないスタブ
+            Route::get('posts', fn () => response('posts index (stub)', 200))->name('posts.index');
+            Route::get('posts/create', fn () => response('posts create (stub)', 200))->name('posts.create');
+            Route::post('posts', fn () => abort(501)); // 未実装
+        }
+
+        // --- Users ---
+        if (class_exists(UserController::class)) {
+            Route::resource('users', UserController::class)->except(['show']);
+        } else {
+            Route::get('users', fn () => response('users index (stub)', 200))->name('users.index');
+            Route::get('users/create', fn () => response('users create (stub)', 200))->name('users.create');
+        }
+    });
+
+/** プロフィール（Breeze がある場合のみ） */
+Route::middleware('auth')->group(function () {
+    if (class_exists(ProfileController::class)) {
+        Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
+        Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+        Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+    }
+});
+
+/** 認証ルート */
+if (file_exists(__DIR__.'/auth.php')) {
+    require __DIR__.'/auth.php';
+}

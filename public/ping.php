@@ -1,0 +1,1 @@
+<?="OK LARAVEL PUBLIC";

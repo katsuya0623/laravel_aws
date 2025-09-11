@@ -1,0 +1,146 @@
+<?php
+
+use Illuminate\Support\Facades\Route;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+
+use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\Admin\PostController;
+use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Front\LandingController;
+use App\Http\Controllers\Front\PostController as FrontPostController;
+
+/*
+|--------------------------------------------------------------------------
+| Web Routes
+|--------------------------------------------------------------------------
+*/
+
+// --- フロント
+Route::get('/', [LandingController::class, 'index'])->name('home');
+
+/* ▼ フロント記事（slug でも ID でも OK）※ front_public.php より前に置く */
+Route::get('/posts', [FrontPostController::class, 'index'])->name('front.posts.index');
+Route::get('/posts/{slugOrId}', [FrontPostController::class, 'show'])->name('front.posts.show');
+/* ▲ ここまで */
+
+// --- ダッシュボード（ログイン必須）
+Route::view('/dashboard', 'dashboard')->middleware(['auth'])->name('dashboard');
+
+// --- 管理系 (/admin/...)
+Route::prefix('admin')->middleware(['auth'])->name('admin.')->group(function () {
+    if (class_exists(PostController::class)) {
+        Route::resource('posts', PostController::class);
+    } else {
+        Route::get('posts', fn () => response('posts index (stub)', 200))->name('posts.index');
+        Route::get('posts/create', fn () => response('posts create (stub)', 200))->name('posts.create');
+        Route::post('posts', fn () => abort(501));
+    }
+
+    if (class_exists(UserController::class)) {
+        Route::resource('users', UserController::class)->except(['show']);
+    } else {
+        Route::get('users', fn () => response('users index (stub)', 200))->name('users.index');
+        Route::get('users/create', fn () => response('users create (stub)', 200))->name('users.create');
+    }
+});
+
+// --- プロフィール（Breeze がある場合のみ）
+Route::middleware('auth')->group(function () {
+    if (class_exists(ProfileController::class)) {
+        Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
+        Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+        Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+    }
+});
+
+// --- 認証ルート
+if (file_exists(__DIR__.'/auth.php')) {
+    require __DIR__.'/auth.php';
+}
+
+// --- 公開側ルート（存在すれば読み込み）
+if (file_exists(__DIR__.'/front_public.php')) {
+    require __DIR__.'/front_public.php';
+}
+
+/* === FRONT_ROUTES_GUARD (do not duplicate) === */
+if (!Route::has('front.home')) {
+    Route::get('/blog', [\App\Http\Controllers\Front\HomeController::class, 'index'])->name('front.home');
+
+    // ★ /posts 系はすでに前方で登録済み。ここでは定義しない（重複禁止）
+    // Route::get('/posts', ...);
+    // Route::get('/posts/{post:slug}', ...);
+
+    Route::get('/category/{slug}', [\App\Http\Controllers\Front\CategoryController::class, 'show'])->name('front.category.show');
+    Route::get('/tag/{slug}', [\App\Http\Controllers\Front\TagController::class, 'show'])->name('front.tag.show');
+}
+
+/* ===== DEBUG (必要なら後で削除) ===== */
+Route::get('/__ping', fn() => 'pong');
+
+Route::get('/__create-plain', function () {
+    $post = new \App\Models\Post();
+    $post->published_at = now();
+    $categories = \App\Models\Category::orderBy('name')->get();
+    $tags = \App\Models\Tag::orderBy('name')->get();
+    return view('admin.posts.debug_create', compact('post','categories','tags'));
+});
+
+Route::get('/ping-ok', fn() => 'pong');
+
+Route::get('/debug-create', function () {
+    $post = new \App\Models\Post(); $post->published_at = now();
+    $categories = \App\Models\Category::orderBy('name')->get();
+    $tags = \App\Models\Tag::orderBy('name')->get();
+    return view('admin.posts.debug_create', compact('post','categories','tags'));
+});
+
+// 非管理: アップロード疎通テスト
+Route::match(['get','post'], '/__upload-test', function (Request $r) {
+    if ($r->isMethod('post')) {
+        if (!$r->hasFile('f')) return 'no file';
+        $f = $r->file('f');
+        if (!$f->isValid()) return 'err: '.$f->getError();
+        $p = $f->store('thumbnails', 'public');   // 文字列パスが返る
+        return 'stored: '.Storage::url($p);
+    }
+    return '<form method="post" enctype="multipart/form-data">'.csrf_field().'<input type="file" name="f" accept="image/*"><button>send</button></form>';
+});
+
+// 管理配下: アップロード疎通テスト（要ログイン）
+Route::prefix('admin')->middleware(['auth'])->group(function () {
+    Route::match(['get','post'], 'posts/__upload-test', function (Request $r) {
+        if ($r->isMethod('post')) {
+            if (!$r->hasFile('f')) return 'no file';
+            $f = $r->file('f');
+            if (!$f->isValid()) return 'err: '.$f->getError();
+            $p = $f->store('thumbnails', 'public'); // 文字列パスが返る
+            return 'stored: '.Storage::url($p);
+        }
+        return '<form method="post" enctype="multipart/form-data">'.csrf_field().'<input type="file" name="f" accept="image/*"><button>send</button></form>';
+    })->name('admin.posts.uploadtest');
+});
+
+// 事前アップロードAPI（要ログイン）
+Route::post('/__preupload', function (Request $r) {
+    if (!$r->hasFile('thumbnail')) {
+        return response()->json(['ok' => false, 'msg' => 'no file'], 422);
+    }
+    $f = $r->file('thumbnail');
+    if (!$f->isValid()) {
+        return response()->json(['ok' => false, 'msg' => 'err: '.$f->getError()], 422);
+    }
+    if ($f->getSize() > 40 * 1024 * 1024) {
+        return response()->json(['ok' => false, 'msg' => 'too large'], 413);
+    }
+
+    $path = $f->store('thumbnails', 'public');
+
+    // ★ここを正しく閉じる（] と ) と ;）
+    return response()->json([
+        'ok'  => true,
+        'path'=> $path,
+        'url' => Storage::url($path),
+    ]);
+})->middleware(['auth'])->name('preupload');

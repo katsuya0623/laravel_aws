@@ -1,0 +1,31 @@
+<x-app-layout>
+  <x-slot name="header"><h2 class="font-semibold text-xl">投稿編集</h2></x-slot>
+
+  <div class="p-6">
+    <form action="{{ $post->exists ? route('admin.posts.update', $post) : route('admin.posts.store') }}" method="POST" enctype="multipart/form-data" class="space-y-6">
+      @csrf
+  @if($post->exists)
+    @method('PUT')
+  @endif
+  @if($post->exists)
+  @endif
+
+      @include('admin.posts._form', ['post' => $post])
+
+      <div class="flex items-center gap-3">
+        <x-primary-button>更新</x-primary-button>
+  @if($post->exists)
+  @if(\$post->exists)
+  @endif
+  @endif
+      </div>
+    </form>
+  @if($post->exists)
+  <form method="POST" action="{{ route('admin.posts.destroy', $post) }}" onsubmit="return window.confirm('本当に削除しますか？')">
+    @csrf
+    @method('DELETE')
+    <button type="submit" class="btn btn-danger">削除</button>
+  </form>
+  @endif
+  </div>
+</x-app-layout>
