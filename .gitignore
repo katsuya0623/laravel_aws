@@ -1,9 +1,14 @@
 /vendor/
 /node_modules/
+/public/hot
 /public/storage
 /storage/*.key
+/storage/app/*.sqlite
 /storage/logs/*
-/storage/framework/*
+/storage/framework/cache/*
+/storage/framework/sessions/*
+/storage/framework/testing/*
+/storage/framework/views/*
 .env
 .env.*
 .phpunit.result.cache
