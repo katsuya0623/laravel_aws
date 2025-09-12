@@ -11,13 +11,13 @@
       <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">コンテンツ管理</h3>
 
       @php
-        $btn = 'group flex items-center gap-4 rounded-2xl border border-gray-200 bg-white p-7
+        $btn = 'group flex items-center gap-4 rounded-2xl border border-gray-200 bg-white p-5
                 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md hover:border-indigo-200
                 hover:bg-indigo-50/40 focus:outline-none focus:ring-2 focus:ring-indigo-500/30';
-        $iconWrap = 'grid place-items-center h-12 w-12 rounded-xl bg-indigo-50 text-indigo-600';
+        $iconWrap = 'grid place-items-center h-10 w-10 rounded-xl bg-indigo-50 text-indigo-600';
         $arrow = 'ml-auto text-gray-400 transition group-hover:translate-x-0.5 group-hover:text-gray-600';
-        $title = 'text-base font-semibold leading-tight';
-        $desc  = 'text-sm text-gray-500';
+        $title = 'font-semibold leading-tight';
+        $desc  = 'text-xs text-gray-500';
       @endphp
 
       <!-- ★ ここで全カードを1つのグリッドに統合 -->
@@ -26,7 +26,7 @@
         <!-- 投稿一覧（フロント） -->
         <a href="{{ url('/posts') }}" class="{{ $btn }}">
           <span class="{{ $iconWrap }}">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 12h16M4 18h7"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 12h16M4 18h7"/></svg>
           </span>
           <span>
             <div class="{{ $title }}">投稿一覧（フロント）</div>
@@ -38,7 +38,7 @@
         <!-- 投稿一覧（バック） -->
         <a href="{{ route('admin.posts.index') }}" class="{{ $btn }}">
           <span class="{{ $iconWrap }}">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M3 5a2 2 0 0 1 2-2h3v3H5v11h14V6h-3V3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5z"/><path d="M9 3h6v6H9z"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor"><path d="M3 5a2 2 0 0 1 2-2h3v3H5v11h14V6h-3V3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5z"/><path d="M9 3h6v6H9z"/></svg>
           </span>
           <span>
             <div class="{{ $title }}">投稿一覧（バック）</div>
@@ -50,7 +50,7 @@
         <!-- 新規投稿 -->
         <a href="{{ route('admin.posts.create') }}" class="{{ $btn }}">
           <span class="{{ $iconWrap }}">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M11 4h2v16h-2z"/><path d="M4 11h16v2H4z"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor"><path d="M11 4h2v16h-2z"/><path d="M4 11h16v2H4z"/></svg>
           </span>
           <span>
             <div class="{{ $title }}">新規投稿</div>
@@ -62,7 +62,7 @@
         <!-- ユーザー管理 -->
         <a href="{{ route('admin.users.index') }}" class="{{ $btn }}">
           <span class="{{ $iconWrap }}">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M16 11a4 4 0 1 0-8 0 4 4 0 0 0 8 0z"/><path d="M12 15c-4.418 0-8 2.239-8 5v1h16v-1c0-2.761-3.582-5-8-5z"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor"><path d="M16 11a4 4 0 1 0-8 0 4 4 0 0 0 8 0z"/><path d="M12 15c-4.418 0-8 2.239-8 5v1h16v-1c0-2.761-3.582-5-8-5z"/></svg>
           </span>
           <span>
             <div class="{{ $title }}">ユーザー管理</div>
@@ -74,7 +74,7 @@
         <!-- ユーザー追加 -->
         <a href="{{ route('admin.users.create') }}" class="{{ $btn }}">
           <span class="{{ $iconWrap }}">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5z"/><path d="M17 14H7a5 5 0 0 0-5 5v1h20v-1a5 5 0 0 0-5-5z"/><path d="M19 8h-2V6h-2V4h2V2h2v2h2v2h-2z"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5z"/><path d="M17 14H7a5 5 0 0 0-5 5v1h20v-1a5 5 0 0 0-5-5z"/><path d="M19 8h-2V6h-2V4h2V2h2v2h2v2h-2z"/></svg>
           </span>
           <span>
             <div class="{{ $title }}">ユーザー追加</div>
@@ -86,7 +86,7 @@
         <!-- プロフィール -->
         <a href="{{ route('user.profile.edit') }}" class="{{ $btn }}">
           <span class="{{ $iconWrap }}">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5z"/><path d="M21 20a8.94 8.94 0 0 0-9-9 8.94 8.94 0 0 0-9 9v1h18z"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5z"/><path d="M21 20a8.94 8.94 0 0 0-9-9 8.94 8.94 0 0 0-9 9v1h18z"/></svg>
           </span>
           <span>
             <div class="{{ $title }}">プロフィール</div>
@@ -98,7 +98,7 @@
         <!-- 企業情報 -->
         <a href="{{ route('user.company.edit') }}" class="{{ $btn }}">
           <span class="{{ $iconWrap }}">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M3 21V4a1 1 0 0 1 1-1h7v18H3zM13 21h7V8h-7v13zM6 7h2v2H6V7zm0 4h2v2H6v-2zm0 4h2v2H6v-2zm10-6h2v2h-2V9zm0 4h2v2h-2v-2z"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor"><path d="M3 21V4a1 1 0 0 1 1-1h7v18H3zM13 21h7V8h-7v13zM6 7h2v2H6V7zm0 4h2v2H6v-2zm0 4h2v2H6v-2zm10-6h2v2h-2V9zm0 4h2v2h-2v-2z"/></svg>
           </span>
           <span>
             <div class="{{ $title }}">企業情報</div>

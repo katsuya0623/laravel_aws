@@ -1,0 +1,116 @@
+<x-app-layout>
+  <x-slot name="header">
+    <div class="text-center">
+      <h2 class="font-semibold text-2xl tracking-tight">ダッシュボード</h2>
+      <p class="text-gray-500 text-sm mt-1">ここから各機能へ移動できます。</p>
+    </div>
+  </x-slot>
+
+  <div class="py-10">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+
+      {{-- セクション：投稿/ユーザー --}}
+      <div class="mb-8">
+        <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">コンテンツ管理</h3>
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {{-- 投稿一覧（フロント） --}}
+          <a href="{{ url('/posts') }}" class="group card">
+            <div class="card-body">
+              <div class="card-icon">
+                {{-- icon --}}
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 12h16M4 18h7"/></svg>
+              </div>
+              <div class="card-title">投稿一覧（フロント）</div>
+              <p class="card-desc">サイト側に公開された記事</p>
+            </div>
+          </a>
+
+          {{-- 投稿一覧（バック） --}}
+          <a href="{{ route('admin.posts.index') }}" class="group card">
+            <div class="card-body">
+              <div class="card-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M3 5a2 2 0 0 1 2-2h3v3H5v11h14V6h-3V3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5z"/><path d="M9 3h6v6H9z"/></svg>
+              </div>
+              <div class="card-title">投稿一覧（バック）</div>
+              <p class="card-desc">管理画面の全記事を確認</p>
+            </div>
+          </a>
+
+          {{-- 新規投稿 --}}
+          <a href="{{ route('admin.posts.create') }}" class="group card">
+            <div class="card-body">
+              <div class="card-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M11 4h2v16h-2z"/><path d="M4 11h16v2H4z"/></svg>
+              </div>
+              <div class="card-title">新規投稿</div>
+              <p class="card-desc">記事を作成する</p>
+            </div>
+          </a>
+
+          {{-- ユーザー管理 --}}
+          <a href="{{ route('admin.users.index') }}" class="group card">
+            <div class="card-body">
+              <div class="card-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M16 11a4 4 0 1 0-8 0 4 4 0 0 0 8 0z"/><path d="M12 15c-4.418 0-8 2.239-8 5v1h16v-1c0-2.761-3.582-5-8-5z"/></svg>
+              </div>
+              <div class="card-title">ユーザー管理</div>
+              <p class="card-desc">アカウント一覧・編集</p>
+            </div>
+          </a>
+
+          {{-- ユーザー追加 --}}
+          <a href="{{ route('admin.users.create') }}" class="group card">
+            <div class="card-body">
+              <div class="card-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5z"/><path d="M17 14H7a5 5 0 0 0-5 5v1h20v-1a5 5 0 0 0-5-5z"/><path d="M19 8h-2V6h-2V4h2V2h2v2h2v2h-2z"/></svg>
+              </div>
+              <div class="card-title">ユーザー追加</div>
+              <p class="card-desc">メンバーを新規作成</p>
+            </div>
+          </a>
+        </div>
+      </div>
+
+      {{-- セクション：プロフィール/企業 --}}
+      <div>
+        <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">プロフィール & 企業</h3>
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {{-- プロフィール --}}
+          <a href="{{ route('user.profile.edit') }}" class="group card">
+            <div class="card-body">
+              <div class="card-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5z"/><path d="M21 20a8.94 8.94 0 0 0-9-9 8.94 8.94 0 0 0-9 9v1h18z"/></svg>
+              </div>
+              <div class="card-title">プロフィール</div>
+              <p class="card-desc">自己紹介・アイコン画像を登録</p>
+            </div>
+          </a>
+
+          {{-- 企業情報 --}}
+          <a href="{{ route('user.company.edit') }}" class="group card">
+            <div class="card-body">
+              <div class="card-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M3 21V4a1 1 0 0 1 1-1h7v18H3zM13 21h7V8h-7v13zM6 7h2v2H6V7zm0 4h2v2H6v-2zm0 4h2v2H6v-2zm10-6h2v2h-2V9zm0 4h2v2h-2v-2z"/></svg>
+              </div>
+              <div class="card-title">企業情報</div>
+              <p class="card-desc">会社名・住所・ロゴなどを登録</p>
+            </div>
+          </a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  {{-- ★ このページ専用の軽量スタイル（Tailwindユーティリティ組み合わせ） --}}
+  <style>
+    .card{
+      @apply rounded-xl border bg-white shadow-sm hover:shadow-md hover:-translate-y-0.5 transition
+             focus:outline-none focus:ring-2 focus:ring-indigo-500/30;
+    }
+    .card-body{ @apply p-5 text-center; }
+    .card-icon{ @apply mx-auto mb-3 h-10 w-10 rounded-lg bg-indigo-50 text-indigo-600 grid place-items-center; }
+    .card-title{ @apply font-semibold; }
+    .card-desc{ @apply text-xs text-gray-500 mt-1; }
+  </style>
+</x-app-layout>

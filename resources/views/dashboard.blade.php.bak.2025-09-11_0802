@@ -1,0 +1,122 @@
+<x-app-layout>
+  <x-slot name="header">
+    <div class="text-center">
+      <h2 class="font-semibold text-2xl tracking-tight">ダッシュボード</h2>
+      <p class="text-gray-500 text-sm mt-1">ここから各機能へ移動できます。</p>
+    </div>
+  </x-slot>
+
+  <div class="py-10">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
+
+      {{-- コンテンツ管理 --}}
+      <section>
+        <h3 class="sec-title">コンテンツ管理</h3>
+        <div class="btn-grid">
+          <a href="{{ url('/posts') }}" class="btn-tile btn-ghost">
+            <span class="btn-icon">≡</span>
+            <span class="btn-text">
+              <strong>投稿一覧（フロント）</strong>
+              <em>サイト側に公開された記事</em>
+            </span>
+            <span class="btn-arrow">→</span>
+          </a>
+
+          <a href="{{ route('admin.posts.index') }}" class="btn-tile btn-ghost">
+            <span class="btn-icon">▦</span>
+            <span class="btn-text">
+              <strong>投稿一覧（バック）</strong>
+              <em>管理画面の全記事を確認</em>
+            </span>
+            <span class="btn-arrow">→</span>
+          </a>
+
+          <a href="{{ route('admin.posts.create') }}" class="btn-tile btn-primary">
+            <span class="btn-icon">＋</span>
+            <span class="btn-text">
+              <strong>新規投稿</strong>
+              <em>記事を作成する</em>
+            </span>
+            <span class="btn-arrow">→</span>
+          </a>
+
+          <a href="{{ route('admin.users.index') }}" class="btn-tile btn-ghost">
+            <span class="btn-icon">����</span>
+            <span class="btn-text">
+              <strong>��ユーザー管理</strong>
+              <em>アカウント一覧・編集</em>
+            </span>
+            <span class="btn-arrow">→</span>
+          </a>
+
+          <a href="{{ route('admin.users.create') }}" class="btn-tile btn-ghost">
+            <span class="btn-icon">����</span>
+            <span class="btn-text">
+              <strong>��ユーザー追加</strong>
+              <em>メンバーを新規作成</em>
+            </span>
+            <span class="btn-arrow">→</span>
+          </a>
+        </div>
+      </section>
+
+      {{-- プロフィール & 企業 --}}
+      <section>
+        <h3 class="sec-title">プロフィール & 企業</h3>
+        <div class="btn-grid">
+          <a href="{{ route('user.profile.edit') }}" class="btn-tile btn-ghost">
+            <span class="btn-icon">����</span>
+            <span class="btn-text">
+              <strong>��プロフィール</strong>
+              <em>自己紹介・アイコン画像を登録</em>
+            </span>
+            <span class="btn-arrow">→</span>
+          </a>
+
+          <a href="{{ route('user.company.edit') }}" class="btn-tile btn-ghost">
+            <span class="btn-icon">����</span>
+            <span class="btn-text">
+              <strong>��企業情報</strong>
+              <em>会社名・住所・ロゴなどを登録</em>
+            </span>
+            <span class="btn-arrow">→</span>
+          </a>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  {{-- このページ専用の軽量スタイル（Tailwindの@apply使用） --}}
+  <style>
+    .sec-title{ @apply text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3; }
+    .btn-grid{ @apply grid gap-4 sm:grid-cols-2 lg:grid-cols-3; }
+
+    .btn-tile{
+      @apply relative flex items-center gap-4 rounded-2xl px-5 py-4
+             border shadow-sm transition
+             focus:outline-none focus:ring-2 focus:ring-indigo-500/30;
+    }
+    .btn-ghost{
+      @apply bg-white border-gray-200 hover:-translate-y-0.5 hover:shadow-md hover:border-indigo-200;
+    }
+    .btn-primary{
+      @apply bg-indigo-600 text-white border-indigo-600 hover:-translate-y-0.5 hover:shadow-md hover:bg-indigo-700;
+    }
+
+    .btn-icon{
+      @apply grid place-items-center h-10 w-10 rounded-xl bg-gray-100 text-gray-700
+             group-[.btn-primary]:bg-indigo-500/20 group-[.btn-primary]:text-white;
+      /* 上の group[...] は tailwind v3 の疑似。互換のためJS不要でOK */
+    }
+    .btn-text strong{ @apply block leading-tight; }
+    .btn-text em{ @apply block text-xs text-gray-500 not-italic; }
+    .btn-primary .btn-text em{ @apply text-indigo-100; }
+
+    .btn-arrow{
+      @apply ml-auto text-gray-400 transition;
+    }
+    .btn-tile:hover .btn-arrow{ @apply translate-x-0.5 text-gray-600; }
+    .btn-primary:hover .btn-arrow{ @apply text-white; }
+  </style>
+</x-app-layout>

@@ -1,0 +1,47 @@
+{{-- resources/views/dashboard.blade.php --}}
+<x-app-layout>
+  <x-slot name="header">
+    <div class="flex flex-col items-center text-center">
+      <h2 class="font-bold text-2xl text-gray-800 dark:text-gray-100">ダッシュボード</h2>
+      <p class="text-sm text-gray-500 dark:text-gray-400">ここから各機能へ移動できます。</p>
+    </div>
+  </x-slot>
+
+  <div class="py-10">
+    <div class="mx-auto max-w-6xl sm:px-6 lg:px-8">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 justify-center text-center">
+        <a href="{{ url('/posts') }}" class="btn-dash">投稿一覧 (フロント)</a>
+        <a href="{{ route('admin.posts.index')  }}" class="btn-dash">投稿一覧 (バック)</a>
+        <a href="{{ route('admin.posts.create') }}" class="btn-dash">新規投稿</a>
+        <a href="{{ route('admin.users.index')  }}" class="btn-dash">ユーザー管理</a>
+        <a href="{{ route('admin.users.create') }}" class="btn-dash">ユーザー追加</a>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    /* ▼ “ヘッダーの巨大ロゴ” をダッシュボード表示時だけ強制で小さくする */
+    header svg, header img {
+      max-height: 48px !important;
+      height: 48px !important;
+      width: auto !important;
+      max-width: none !important;
+      display: block;
+    }
+
+    /* カードを大きめ＆中央寄せの見た目 */
+    .btn-dash{
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      height:120px; padding:1rem; border-radius:.75rem;
+      border:1px solid rgba(0,0,0,.12); background:#fff; color:#374151;
+      font-size:1.1rem; font-weight:600; text-decoration:none;
+      box-shadow:0 2px 4px rgba(0,0,0,.05);
+      transition:transform .2s ease, box-shadow .2s ease, background .15s ease;
+    }
+    .btn-dash:hover{ background:#f9fafb; transform:translateY(-2px); box-shadow:0 8px 16px rgba(0,0,0,.08); }
+    @media (prefers-color-scheme: dark){
+      .btn-dash{ border-color:rgba(255,255,255,.15); background:#111827; color:#f3f4f6; }
+      .btn-dash:hover{ background:#1f2937; }
+    }
+  </style>
+</x-app-layout>

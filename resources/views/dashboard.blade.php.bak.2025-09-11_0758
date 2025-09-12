@@ -1,0 +1,56 @@
+<x-app-layout>
+  <x-slot name="header">
+    <div class="text-center">
+      <h2 class="font-semibold text-xl">ダッシュボード</h2>
+      <p class="text-gray-500 text-sm">ここから各機能へ移動できます。</p>
+    </div>
+  </x-slot>
+
+  <div class="py-10">
+    <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+      <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+
+        {{-- 既存カード（ルート名は環境に合わせて） --}}
+        <a href="{{ url('/posts') }}"
+           class="block rounded-xl border bg-white p-5 shadow hover:shadow-md transition text-center">
+          <div class="font-semibold">投稿一覧（フロント）</div>
+        </a>
+
+        <a href="{{ route('admin.posts.index') }}"
+           class="block rounded-xl border bg-white p-5 shadow hover:shadow-md transition text-center">
+          <div class="font-semibold">投稿一覧（バック）</div>
+        </a>
+
+        <a href="{{ route('admin.posts.create') }}"
+           class="block rounded-xl border bg-white p-5 shadow hover:shadow-md transition text-center">
+          <div class="font-semibold">新規投稿</div>
+        </a>
+
+        <a href="{{ route('admin.users.index') }}"
+           class="block rounded-xl border bg-white p-5 shadow hover:shadow-md transition text-center">
+          <div class="font-semibold">ユーザー管理</div>
+        </a>
+
+        <a href="{{ route('admin.users.create') }}"
+           class="block rounded-xl border bg-white p-5 shadow hover:shadow-md transition text-center">
+          <div class="font-semibold">ユーザー追加</div>
+        </a>
+
+        {{-- ★ 追加：プロフィール --}}
+        <a href="{{ route('user.profile.edit') }}"
+           class="block rounded-xl border bg-white p-5 shadow hover:shadow-md transition text-center">
+          <div class="font-semibold">プロフィール</div>
+          <p class="text-sm text-gray-600 mt-1">自己紹介・アイコン画像を登録</p>
+        </a>
+
+        {{-- ★ 追加：企業情報 --}}
+        <a href="{{ route('user.company.edit') }}"
+           class="block rounded-xl border bg-white p-5 shadow hover:shadow-md transition text-center">
+          <div class="font-semibold">企業情報</div>
+          <p class="text-sm text-gray-600 mt-1">会社名・住所・ロゴなどを登録</p>
+        </a>
+
+      </div>
+    </div>
+  </div>
+</x-app-layout>

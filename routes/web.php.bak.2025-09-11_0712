@@ -146,23 +146,17 @@ Route::post('/__preupload', function (Request $r) {
 })->middleware(['auth'])->name('preupload');
 
 // ==== User Profile (自己紹介) ====
+use App\Http\Controllers\UserProfileController;
 
 Route::middleware(['auth'])->group(function () {
+    Route::get('/profile/edit', [UserProfileController::class, 'edit'])->name('user.profile.edit');
+    Route::post('/profile/update', [UserProfileController::class, 'update'])->name('user.profile.update');
 });
 
 // ==== User Profile (自己紹介) ====
+use App\Http\Controllers\UserProfileController;
 
 Route::middleware(['auth'])->group(function () {
-});
-
-// ==== User Profile (single definition) ====
-Route::middleware(['auth'])->group(function () {
-    Route::get('/profile/edit', [\App\Http\Controllers\UserProfileController::class, 'edit'])->name('user.profile.edit');
-    Route::post('/profile/update', [\App\Http\Controllers\UserProfileController::class, 'update'])->name('user.profile.update');
-});
-
-// ==== Company Profile ====
-Route::middleware(['auth'])->group(function () {
-    Route::get('/company/edit', [\App\Http\Controllers\CompanyProfileController::class, 'edit'])->name('user.company.edit');
-    Route::post('/company/update', [\App\Http\Controllers\CompanyProfileController::class, 'update'])->name('user.company.update');
+    Route::get('/profile/edit', [UserProfileController::class, 'edit'])->name('user.profile.edit');
+    Route::post('/profile/update', [UserProfileController::class, 'update'])->name('user.profile.update');
 });
