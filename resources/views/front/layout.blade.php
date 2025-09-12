@@ -21,7 +21,7 @@
       <a href="{{ route('front.home') }}" class="font-bold">My Blog</a>
       <nav class="text-sm overflow-x-auto">
         <ul class="flex gap-4">
-          <li><a href="{{ route('front.posts.index') }}" class="hover:underline">記事一覧</a></li>
+          <li><a href="{{ route('front.articles.index') }}" class="hover:underline">記事一覧</a></li>
           @isset($categories)
             @foreach($categories as $cat)
               <li>

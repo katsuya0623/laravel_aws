@@ -1,19 +1,32 @@
 <?php
+
 namespace App\Http\Controllers\Front;
+
 use App\Http\Controllers\Controller;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
+use App\Models\Post;
+use App\Models\Company;
+use App\Models\Job;
 
 class LandingController extends Controller
 {
     public function index()
     {
-        $posts = DB::table('posts')
-            ->when(Schema::hasColumn('posts','published_at'), fn($q) => $q->orderByDesc('published_at'))
-            ->orderByDesc('id')
-            ->limit(10)
-            ->get();
+        // それぞれ無ければ空コレクションでOK（ビュー側で@forelse処理）
+        $latestArticles    = class_exists(Post::class)
+            ? Post::query()->when(method_exists(Post::class,'published'),
+                fn($q)=>$q->published())->latest('published_at')->limit(6)->get()
+            : collect();
 
-        return view('welcome', compact('posts'));
+        $featuredCompanies = class_exists(Company::class)
+            ? Company::query()->when(method_exists(Company::class,'published'),
+                fn($q)=>$q->published())->latest('published_at')->latest('id')->limit(6)->get()
+            : collect();
+
+        $latestJobs        = class_exists(Job::class)
+            ? Job::query()->when(method_exists(Job::class,'published'),
+                fn($q)=>$q->published())->latest('published_at')->latest('id')->limit(6)->get()
+            : collect();
+
+        return view('front.home', compact('latestArticles','featuredCompanies','latestJobs'));
     }
 }

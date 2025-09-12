@@ -12,7 +12,7 @@
   <a href="{{ route('dashboard') }}" style="color:#fff; text-decoration:none;">ダッシュボード</a>
   <a href="{{ route('admin.posts.index') }}" style="color:#fff; text-decoration:none;">投稿一覧</a>
   <a href="{{ route('admin.posts.create') }}" style="color:#fff; text-decoration:none;">＋新規投稿</a>
-  <a href="{{ route('front.posts.index') }}" style="color:#fff; text-decoration:none;">フロント記事一覧</a>
+  <a href="{{ route('front.articles.index') }}" style="color:#fff; text-decoration:none;">フロント記事一覧</a>
 
   <span style="margin-left:auto; opacity:.85;">
     {{ auth()->user()->name ?? 'User' }} でログイン中
