@@ -173,3 +173,6 @@
 
 </body>
 </html>
+
+{{-- company/jobs injected (末尾) --}}
+@include('partials.front-company-jobs')

@@ -1,0 +1,67 @@
+<?php
+
+namespace App\Http\Controllers\Front;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+use App\Models\Company;
+
+class CompanyController extends Controller
+{
+    /** 企業一覧（フロント／公開） */
+    public function index(Request $request)
+    {
+        // まず総件数（診断用ログ）
+        $total = Company::withoutGlobalScopes()->count();
+
+        // デモ(nibi-demo-*)は除外。管理側でスラッグ未入力が「NULL」でも「空文字」でも拾う
+        $companies = Company::withoutGlobalScopes()
+            ->select(['id','name','slug','updated_at'])
+            ->where(function ($q) {
+                $q->whereNull('slug')                  // NULL を許可
+                  ->orWhere('slug', '')                // 空文字を許可
+                  ->orWhere('slug', 'not like', 'nibi-demo-%'); // デモ除外
+            })
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->get();
+
+        Log::info('front.company.index', [
+            'total' => $total,
+            'after_filter' => $companies->count(),
+            'sample' => $companies->pluck('slug')->take(5),
+        ]);
+
+        return view('front.company.index', [
+            'companies' => $companies,
+            'q'         => (string)$request->get('q', ''),
+        ]);
+    }
+
+    /** 企業詳細（slug or id／公開） */
+    public function show(string $slugOrId)
+    {
+        $company = Company::withoutGlobalScopes()
+            ->when(is_numeric($slugOrId),
+                fn($q) => $q->where('id', (int)$slugOrId),
+                fn($q) => $q->where('slug', $slugOrId)
+            )
+            ->first();
+
+        if (!$company) {
+            $row = DB::table('companies')
+                ->select(['id','name','slug','updated_at'])
+                ->when(is_numeric($slugOrId),
+                    fn($q) => $q->where('id', (int)$slugOrId),
+                    fn($q) => $q->where('slug', $slugOrId)
+                )
+                ->first();
+            abort_if(!$row, 404);
+            $company = (object)$row;
+        }
+
+        return view('front.company.show', compact('company'));
+    }
+}

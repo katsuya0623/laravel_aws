@@ -1,0 +1,37 @@
+<?php
+use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+/* 診断 */
+Route::get('/__company-diag', function () {
+    $count = \App\Models\Company::withoutGlobalScopes()->count();
+    $companyIndexRoute = optional(
+        collect(\Illuminate\Support\Facades\Route::getRoutes())->firstWhere('uri','company')
+    )->getActionName();
+
+    return response()->json([
+        'company_count' => $count,
+        'company_route' => $companyIndexRoute,
+        'view_front_company_index_exists'      => view()->exists('front.company.index'),
+        'view_front_company_index_flat_exists' => view()->exists('front.company_index'),
+    ]);
+});
+
+/* ダミー追加 */
+Route::get('/__company-add-dummy', function () {
+    $slug = 'nibi-demo-'.Str::lower(Str::random(6));
+    $id = DB::table('companies')->insertGetId([
+        'name'       => '株式会社ニビ（デモ）',
+        'slug'       => $slug,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+    return response()->json(['inserted_id' => $id, 'slug' => $slug]);
+});
+
+/* ダミー削除 */
+Route::get('/__company-clean-dummy', function () {
+    $n = DB::table('companies')->where('slug','like','nibi-demo-%')->delete();
+    return response()->json(['deleted' => $n]);
+});

@@ -4,14 +4,6 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>@yield('title', 'nibi')</title>
-
-  <link rel="preconnect" href="https://fonts.bunny.net">
-  {{-- ▲ 元の link が壊れていたので修正（&display=swap を正しい位置に） --}}
-  <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
-
-  <link rel="stylesheet" href="/build/tw.css?v=1756707288">
-  <link rel="stylesheet" href="/build/override.css?v=1756708119">
-
   <style>
     /* ===== 基本レイアウト ===== */
     :root{
@@ -92,15 +84,7 @@
 
   <header class="site-header">
     <div class="container header-inner">
-      <div class="brand">
-        <a href="/" aria-label="nibi top">
-          {{-- ロゴの実体は public/images/logo.svg --}}
-          <img src="{{ asset('images/logo.svg') }}"
-               alt="{{ config('app.name', 'nibi') }}"
-               height="28" width="120"  {{-- おおよその幅（CLS対策） --}}
-               style="height:28px;width:auto" />
-        </a>
-      </div>
+      <div class="brand"><a href="/">nibi</a></div>
       <nav class="nav">
         <a href="{{ route('front.posts.index') }}">記事一覧</a>
         <a href="{{ route('front.company.index') }}">企業</a>

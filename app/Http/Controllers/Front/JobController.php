@@ -1,0 +1,48 @@
+<?php
+
+namespace App\Http\Controllers\Front;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\Request;
+use App\Models\Job;
+
+class JobController extends Controller
+{
+    /** 求人一覧（フロント） */
+    public function index(Request $request)
+    {
+        $q      = trim((string)$request->get('q', ''));
+        $status = (string)$request->get('status', ''); // 例: 'published' / 'draft' / ''(全て)
+
+        $jobs = Job::query()
+            ->when($q !== '', function ($query) use ($q) {
+                $query->where(function ($w) use ($q) {
+                    $w->where('title', 'like', "%{$q}%")
+                      ->orWhere('slug',  'like', "%{$q}%");
+                });
+            })
+            ->when($status !== '', fn($query) => $query->where('status', $status)) // カラム名は実DBに合わせて
+            ->orderByDesc('id')
+            ->paginate(10)
+            ->withQueryString();
+
+        return view('front.jobs.index', [
+            'jobs'   => $jobs,
+            'q'      => $q,
+            'status' => $status,
+        ]);
+    }
+
+    /** 詳細（slug または id） */
+    public function show(string $slugOrId)
+    {
+        $job = Job::query()
+            ->when(is_numeric($slugOrId),
+                fn($q) => $q->where('id', (int)$slugOrId),
+                fn($q) => $q->where('slug', $slugOrId)
+            )
+            ->firstOrFail();
+
+        return view('front.jobs.show', compact('job'));
+    }
+}

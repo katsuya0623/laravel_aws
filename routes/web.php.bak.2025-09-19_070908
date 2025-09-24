@@ -40,40 +40,20 @@ Route::middleware(['auth'])->group(function () {
 });
 
 /* ▼ 公開側 企業 / 求人（slug or id 想定） */
-
-// === 旧URL救済（恒久リダイレクト 301） ===
-// /company/company → /company
-// /jobs/jobs       → /jobs
-// /companys, /companies → /company
-Route::permanentRedirect('/company/company', '/company');
-Route::permanentRedirect('/jobs/jobs', '/jobs');
-Route::permanentRedirect('/companys', '/company');
-Route::permanentRedirect('/companies', '/company');
-
-// ▼ 公開側 企業 (/company, /company/{slug or id})
 Route::prefix('company')->group(function () {
-    // 一覧: /company
-    Route::get('/', [CompanyController::class, 'index'])->name('front.company.index');
+    Route::get('/company', [CompanyController::class, 'index'])->name('front.company.index'); // 一覧(仮)
 
-    // 詳細: /company/{slugOrId}  ※ edit は除外
+    // edit という文字を slug として受け付けないように除外
     Route::get('/{slugOrId}', [CompanyController::class, 'show'])
-        ->where('slugOrId', '^(?!edit$)([A-Za-z0-9\-]+|\d+)$')
-        ->name('front.company.show');
+        ->where('slugOrId', '^(?!edit$)[A-Za-z0-9\-]+|\d+$')
+        ->name('front.company.show');   // 企業詳細
 });
 
-// ▼ 公開側 求人 (/jobs, /jobs/{slug or id})
-use App\Http\Controllers\Front\ApplicationController;
 Route::prefix('jobs')->group(function () {
-    // 応募: /jobs/{job:slug}/apply（先に定義して /{slugOrId} と競合しないように）
-    Route::post('/{job:slug}/apply', [ApplicationController::class, 'store'])->name('front.jobs.apply');
-
-    // 一覧: /jobs
-    Route::get('/', [FrontJobController::class, 'index'])->name('front.jobs.index');
-
-    // 詳細: /jobs/{slugOrId}
+    Route::get('/jobs', [FrontJobController::class, 'index'])->name('front.jobs.index');   // 一覧(仮)
     Route::get('/{slugOrId}', [FrontJobController::class, 'show'])
-        ->where('slugOrId', '^([A-Za-z0-9\-]+|\d+)$')
-        ->name('front.jobs.show');
+        ->where('slugOrId', '[A-Za-z0-9\-]+|\d+$')
+        ->name('front.jobs.show');     // 求人詳細
 });
 /* ▲ ここまで */
 
@@ -223,32 +203,13 @@ Route::get('/__company-diag', function () {
 
 /* removed debug */
 
-// ★ トップページ
-Route::get('/', [HomeController::class, 'index'])->name('front.home');
-/* ==== TEMP DIAG START: COMPANIES ==== */
-\Illuminate\Support\Facades\Route::get('/__companies-diag', function () {
-    $model      = new \App\Models\Company();
-    $modelConn  = $model->getConnectionName() ?: config('database.default');
+/* ==== Job 応募 ==== */
+use App\Http\Controllers\Front\ApplicationController;
+Route::post('/jobs/{job:slug}/apply', [ApplicationController::class, 'store'])->name('front.jobs.apply');
 
-    $defConn    = config('database.default');
-    $defDb      = config("database.connections.$defConn.database");
-    $modDb      = config("database.connections.$modelConn.database");
 
-    $defCount   = \Illuminate\Support\Facades\DB::connection($defConn)->table('companies')->count();
-    $modCount   = \Illuminate\Support\Facades\DB::connection($modelConn)->table('companies')->count();
+Route::get('/jobs/{job:slug}', [FrontJobController::class, 'show'])
+    ->name('front.jobs.show');
 
-    $sampleDef  = \Illuminate\Support\Facades\DB::connection($defConn)->table('companies')->orderByDesc('id')->limit(3)->get();
-    $sampleMod  = \Illuminate\Support\Facades\DB::connection($modelConn)->table('companies')->orderByDesc('id')->limit(3)->get();
-
-    return response()->json([
-        'default_connection' => $defConn,
-        'default_database'   => $defDb,
-        'default_count'      => $defCount,
-        'model_connection'   => $modelConn,
-        'model_database'     => $modDb,
-        'model_count'        => $modCount,
-        'sample_default'     => $sampleDef,
-        'sample_model'       => $sampleMod,
-    ]);
-});
-/* ==== TEMP DIAG END ==== */
+Route::post('/jobs/{job:slug}/apply', [ApplicationController::class, 'store'])
+    ->name('front.jobs.apply');

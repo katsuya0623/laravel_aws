@@ -226,19 +226,21 @@ Route::get('/__company-diag', function () {
 // ★ トップページ
 Route::get('/', [HomeController::class, 'index'])->name('front.home');
 /* ==== TEMP DIAG START: COMPANIES ==== */
-\Illuminate\Support\Facades\Route::get('/__companies-diag', function () {
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route;
+
+Route::get('/__companies-diag', function () {
     $model      = new \App\Models\Company();
     $modelConn  = $model->getConnectionName() ?: config('database.default');
-
     $defConn    = config('database.default');
     $defDb      = config("database.connections.$defConn.database");
     $modDb      = config("database.connections.$modelConn.database");
 
-    $defCount   = \Illuminate\Support\Facades\DB::connection($defConn)->table('companies')->count();
-    $modCount   = \Illuminate\Support\Facades\DB::connection($modelConn)->table('companies')->count();
+    $defCount   = DB::connection($defConn)->table('companies')->count();
+    $modCount   = DB::connection($modelConn)->table('companies')->count();
 
-    $sampleDef  = \Illuminate\Support\Facades\DB::connection($defConn)->table('companies')->orderByDesc('id')->limit(3)->get();
-    $sampleMod  = \Illuminate\Support\Facades\DB::connection($modelConn)->table('companies')->orderByDesc('id')->limit(3)->get();
+    $sampleDef  = DB::connection($defConn)->table('companies')->orderByDesc('id')->limit(3)->get();
+    $sampleMod  = DB::connection($modelConn)->table('companies')->orderByDesc('id')->limit(3)->get();
 
     return response()->json([
         'default_connection' => $defConn,

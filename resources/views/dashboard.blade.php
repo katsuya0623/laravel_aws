@@ -20,7 +20,7 @@
         $desc  = 'text-sm text-gray-500';
       @endphp
 
-      <!-- ★ ここで全カードを1つのグリッドに統合 -->
+      <!-- すべてのカードを1つのグリッドに -->
       <div class="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
 
         <!-- 投稿一覧（フロント） -->
@@ -95,7 +95,7 @@
           <span class="{{ $arrow }}">→</span>
         </a>
 
-        <!-- 企業情報 -->
+        <!-- 企業情報（本人用プロフィール拡張） -->
         <a href="{{ route('user.company.edit') }}" class="{{ $btn }}">
           <span class="{{ $iconWrap }}">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M3 21V4a1 1 0 0 1 1-1h7v18H3zM13 21h7V8h-7v13zM6 7h2v2H6V7zm0 4h2v2H6v-2zm0 4h2v2H6v-2zm10-6h2v2h-2V9zm0 4h2v2h-2v-2z"/></svg>
@@ -103,6 +103,53 @@
           <span>
             <div class="{{ $title }}">企業情報</div>
             <div class="{{ $desc }}">会社名・住所・ロゴなどを登録</div>
+          </span>
+          <span class="{{ $arrow }}">→</span>
+        </a>
+
+        <!-- 企業一覧（管理） -->
+        <a href="{{ route('admin.companies.index') }}" class="{{ $btn }}">
+          <span class="{{ $iconWrap }}">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M3 21V4a1 1 0 0 1 1-1h7v18H3zM13 21h8V8h-8v13z"/>
+            </svg>
+          </span>
+          <span>
+            <div class="{{ $title }}">企業一覧（管理）</div>
+            <div class="{{ $desc }}">登録されている企業の管理</div>
+          </span>
+          <span class="{{ $arrow }}">→</span>
+        </a>
+
+ <!-- 求人投稿 -->
+<a href="{{ route('admin.jobs.create') }}" class="{{ $btn }}">
+  <span class="{{ $iconWrap }}">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M10 3h4a2 2 0 0 1 2 2v1h3a2 2 0 0 1 2 2v4H3V8a2 2 0 0 1 2-2h3V5a2 2 0 0 1 2-2zm2 2h-2v1h6V5h-4z"/>
+      <path d="M3 13h18v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5z"/>
+      <path d="M12 9a.75.75 0 0 1 .75.75V11h1.25a.75.75 0 0 1 0 1.5H12.75v1.25a.75.75 0 1 1-1.5 0V12.5H10a.75.75 0 0 1 0-1.5h1.25V9.75A.75.75 0 0 1 12 9z"/>
+    </svg>
+  </span>
+  <span>
+    <div class="{{ $title }}">求人投稿</div>
+    <div class="{{ $desc }}">新しい求人を作成する</div>
+  </span>
+  <span class="{{ $arrow }}">→</span>
+</a>
+
+
+
+
+        <!-- 求人一覧（管理） -->
+        <a href="{{ route('admin.jobs.index') }}" class="{{ $btn }}">
+          <span class="{{ $iconWrap }}">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M4 7h16v2H4zM4 11h16v2H4zM4 15h10v2H4z"/>
+            </svg>
+          </span>
+          <span>
+            <div class="{{ $title }}">求人一覧（管理）</div>
+            <div class="{{ $desc }}">掲載中の求人を管理</div>
           </span>
           <span class="{{ $arrow }}">→</span>
         </a>

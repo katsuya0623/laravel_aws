@@ -1,0 +1,39 @@
+<?php
+
+namespace App\Http\Controllers\Front;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\Request;
+use App\Models\Company;
+
+class CompanyController extends Controller
+{
+    /** 企業一覧（フロント／公開） */
+    public function index(Request $request)
+    {
+        // グローバルスコープの影響を排除して確実に取得
+        $companies = Company::withoutGlobalScopes()
+            ->select(['id','name','slug','updated_at'])
+            ->latest('updated_at')
+            ->latest('id')
+            ->get();
+
+        return view('front.company.index', [
+            'companies' => $companies,
+            'q'         => (string)$request->get('q', ''),
+        ]);
+    }
+
+    /** 企業詳細（slug or id／公開） */
+    public function show(string $slugOrId)
+    {
+        $company = Company::withoutGlobalScopes()
+            ->when(is_numeric($slugOrId),
+                fn($q) => $q->where('id', (int)$slugOrId),
+                fn($q) => $q->where('slug', $slugOrId)
+            )
+            ->firstOrFail();
+
+        return view('front.company.show', compact('company'));
+    }
+}

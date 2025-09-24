@@ -1,0 +1,65 @@
+<?php
+
+namespace App\Http\Controllers\Front;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\Request;
+use App\Models\Company;
+use Illuminate\Support\Facades\DB;
+
+class CompanyController extends Controller
+{
+    /** 企業一覧（フロント／公開） */
+    public function index(Request $request)
+    {
+        // デモ(nibi-demo-*)は除外。slugがNULLの企業(管理の1社)は表示
+        $companies = Company::withoutGlobalScopes()
+            ->select(['id','name','slug','updated_at'])
+            ->where(function ($q) {
+                $q->whereNull('slug')
+                  ->orWhere('slug', 'not like', 'nibi-demo-%');
+            })
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->get();
+
+        return view('front.company.index', [
+            'companies' => $companies,
+            'q'         => (string)$request->get('q', ''),
+        ]);
+    }
+
+    /** 企業詳細（slug or id／公開） */
+    public function show(string $slugOrId)
+    {
+        // まずはEloquent（グローバルスコープ無効）
+        $company = Company::withoutGlobalScopes()
+            ->when(is_numeric($slugOrId),
+                fn($q) => $q->where('id', (int)$slugOrId),
+                fn($q) => $q->where('slug', $slugOrId)
+            )
+            ->first();
+
+        // Eloquentで拾えない場合のフォールバック（DB直）
+        if (!$company) {
+            $row = DB::table('companies')
+                ->select(['id','name','slug','updated_at'])
+                ->when(is_numeric($slugOrId),
+                    fn($q) => $q->where('id', (int)$slugOrId),
+                    fn($q) => $q->where('slug', $slugOrId)
+                )
+                ->first();
+
+            abort_if(!$row, 404);
+
+            $company = (object)[
+                'id'         => $row->id,
+                'name'       => $row->name,
+                'slug'       => $row->slug,
+                'updated_at' => $row->updated_at ?? null,
+            ];
+        }
+
+        return view('front.company.show', compact('company'));
+    }
+}

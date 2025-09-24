@@ -1,0 +1,40 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+
+class Job extends Model
+{
+    use HasFactory;
+
+    // ここに一括代入OKなカラムを列挙
+    protected $fillable = [
+        'title','excerpt','slug','status','published_at','company_id','image_url',
+        'location','employment_type','work_style','openings',
+        'salary_min','salary_max','salary_currency','salary_unit','salary_notes',
+        'application_deadline','experience_years_min','experience_years_max','education','languages',
+        'visa_support','relocation_support','work_hours','holidays',
+        'selection_process','documents_required','responsibilities','requirements','benefits',
+        'tech_stack','tags','external_link_url',
+    ];
+
+    // 型変換
+    protected $casts = [
+        'published_at'         => 'datetime',
+        'application_deadline' => 'date',
+        'openings'             => 'integer',
+        'salary_min'           => 'integer',
+        'salary_max'           => 'integer',
+        'experience_years_min' => 'integer',
+        'experience_years_max' => 'integer',
+        'visa_support'         => 'boolean',
+        'relocation_support'   => 'boolean',
+    ];
+
+    public function company()
+    {
+        return $this->belongsTo(\App\Models\Company::class);
+    }
+}
