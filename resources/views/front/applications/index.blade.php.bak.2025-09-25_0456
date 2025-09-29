@@ -1,0 +1,47 @@
+@extends('layouts.front')
+
+@section('title','応募履歴')
+
+@section('content')
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold">応募履歴</h1>
+  </div>
+
+  @if($apps->isEmpty())
+    <div class="bg-white border rounded p-6 text-center text-gray-600">
+      応募履歴はまだありません。
+    </div>
+  @else
+    <div class="bg-white border rounded overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 border-b">
+          <tr>
+            <th class="text-left px-4 py-3">応募日時</th>
+            <th class="text-left px-4 py-3">求人</th>
+            <th class="text-left px-4 py-3">会社</th>
+            <th class="text-left px-4 py-3">ステータス</th>
+            <th class="text-right px-4 py-3">詳細</th>
+          </tr>
+        </thead>
+        <tbody>
+          @foreach($apps as $a)
+            <tr class="border-b">
+              <td class="px-4 py-3">{{ $a->created_at?->format('Y/m/d H:i') }}</td>
+              <td class="px-4 py-3">{{ $a->job->title ?? '-' }}</td>
+              <td class="px-4 py-3">{{ $a->job->company->name ?? '-' }}</td>
+              <td class="px-4 py-3">{{ $statusLabels[$a->status] ?? $a->status ?? '—' }}</td>
+              <td class="px-4 py-3 text-right">
+                <a class="text-indigo-600 hover:underline"
+                   href="{{ route('mypage.applications.show',$a->id) }}">
+                  見る
+                </a>
+              </td>
+            </tr>
+          @endforeach
+        </tbody>
+      </table>
+    </div>
+
+    <div class="mt-6">{{ $apps->links() }}</div>
+  @endif
+@endsection

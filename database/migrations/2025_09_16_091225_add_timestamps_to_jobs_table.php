@@ -5,9 +5,9 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration {
   public function up(): void {
-    Schema::table('jobs', function (Blueprint $t) {
-      $hasCreated = Schema::hasColumn('jobs','created_at');
-      $hasUpdated = Schema::hasColumn('jobs','updated_at');
+    Schema::table('recruit_jobs', function (Blueprint $t) {
+      $hasCreated = Schema::hasColumn('recruit_jobs','created_at');
+      $hasUpdated = Schema::hasColumn('recruit_jobs','updated_at');
 
       if (!$hasCreated && !$hasUpdated) {
         // 両方ないならまとめて追加
@@ -20,9 +20,9 @@ return new class extends Migration {
   }
 
   public function down(): void {
-    Schema::table('jobs', function (Blueprint $t) {
-      if (Schema::hasColumn('jobs','created_at')) $t->dropColumn('created_at');
-      if (Schema::hasColumn('jobs','updated_at')) $t->dropColumn('updated_at');
+    Schema::table('recruit_jobs', function (Blueprint $t) {
+      if (Schema::hasColumn('recruit_jobs','created_at')) $t->dropColumn('created_at');
+      if (Schema::hasColumn('recruit_jobs','updated_at')) $t->dropColumn('updated_at');
     });
   }
 };

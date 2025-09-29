@@ -3,43 +3,39 @@
 namespace App\Http\Controllers\Front;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\Job;
+use Illuminate\Http\Request;
 
 class JobController extends Controller
 {
-    /** 求人一覧（フロント） */
+    /** /recruit_jobs */
     public function index(Request $request)
     {
-        $q      = trim((string)$request->get('q', ''));
-        $status = (string)$request->get('status', ''); // 例: 'published' / 'draft' / ''(全て)
-
         $jobs = Job::query()
-            ->when($q !== '', function ($query) use ($q) {
-                $query->where(function ($w) use ($q) {
-                    $w->where('title', 'like', "%{$q}%")
-                      ->orWhere('slug',  'like', "%{$q}%");
-                });
-            })
-            ->when($status !== '', fn($query) => $query->where('status', $status)) // カラム名は実DBに合わせて
-            ->orderByDesc('id')
-            ->paginate(10)
-            ->withQueryString();
+            ->with(['company'])          // 会社名などを一緒に
+            ->withCount('favoredBy')     // ★数 → favored_by_count
+            ->published()                // 公開スコープ（カラムがあれば有効）
+            ->latest('id')
+            ->paginate(12);
 
+        // Bladeが jobs / recruit_jobs のどちらでも動くよう両方で渡す
         return view('front.jobs.index', [
-            'jobs'   => $jobs,
-            'q'      => $q,
-            'status' => $status,
+            'jobs'         => $jobs,
+            'recruit_jobs' => $jobs,
         ]);
     }
 
-    /** 詳細（slug または id） */
-    public function show(string $slugOrId)
+    /** /recruit_jobs/{slugOrId} */
+    public function show($slugOrId)
     {
         $job = Job::query()
-            ->when(is_numeric($slugOrId),
-                fn($q) => $q->where('id', (int)$slugOrId),
-                fn($q) => $q->where('slug', $slugOrId)
+            ->with(['company'])          // 会社情報
+            ->withCount('favoredBy')     // ★数 → favored_by_count
+            ->published()                // 必要なら公開のみ
+            ->when(
+                is_numeric($slugOrId),
+                fn ($q) => $q->where('id', (int) $slugOrId),
+                fn ($q) => $q->where('slug', $slugOrId)
             )
             ->firstOrFail();
 

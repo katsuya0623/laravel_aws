@@ -17,7 +17,7 @@ class UpdateCompanyProfileRequest extends FormRequest
             'company_name'      => ['required','string','max:120'],
             'company_name_kana' => ['nullable','string','max:120'],
             'description'       => ['nullable','string','max:4000'],
-            'logo'              => ['nullable','image','mimes:jpg,jpeg,png,webp','max:4096'],
+            'logo'              => ['nullable','file','mimes:jpg,jpeg,png,webp,svg,svgz','max:10240'],
             'website_url'       => ['nullable','url'],
             'email'             => ['nullable','email','max:255'],
             'tel'               => ['nullable','string','max:50'],

@@ -21,12 +21,12 @@ return new class extends Migration {
             $t->text('message')->nullable();
             $t->unsignedBigInteger('job_id');
             $t->timestamps();
-            $t->foreign('job_id')->references('id')->on('jobs')->onDelete('cascade');
+            $t->foreign('job_id')->references('id')->on('recruit_jobs')->onDelete('cascade');
         });
 
         // jobs に存在するものだけコピー
         foreach ($rows as $r) {
-            if (DB::table('jobs')->where('id', $r->job_id)->exists()) {
+            if (DB::table('recruit_jobs')->where('id', $r->job_id)->exists()) {
                 DB::table('applications_tmp')->insert([
                     'id'         => $r->id,
                     'name'       => $r->name,

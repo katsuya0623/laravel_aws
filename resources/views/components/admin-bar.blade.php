@@ -14,6 +14,12 @@
   <a href="{{ route('admin.posts.create') }}" style="color:#fff; text-decoration:none;">＋新規投稿</a>
   <a href="{{ route('front.posts.index') }}" style="color:#fff; text-decoration:none;">フロント記事一覧</a>
 
+  {{-- ★ ここを追加：管理者用 応募一覧 --}}
+  <a href="{{ route('admin.applications.index') }}" style="color:#fff; text-decoration:none;">応募一覧</a>
+  {{-- （任意）CSVエクスポートも出すなら ↓ を有効化
+  <a href="{{ route('admin.applications.export', request()->query()) }}" style="color:#fff; text-decoration:none;">CSV</a>
+  --}}
+
   <span style="margin-left:auto; opacity:.85;">
     {{ auth()->user()->name ?? 'User' }} でログイン中
   </span>
@@ -34,6 +40,7 @@
 <style>
   @media (max-width: 420px) {
     #admin-bar { font-size:12px; gap:8px; }
+    /* 投稿リンク2つはモバイルで非表示（順番は据え置きなので従来の指定のままでOK） */
     #admin-bar a:nth-of-type(3), /* 投稿一覧 */
     #admin-bar a:nth-of-type(4)  /* ＋新規投稿 */
     { display:none; }

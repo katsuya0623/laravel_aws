@@ -1,13 +1,13 @@
+{{-- resources/views/partials/front-company-jobs.blade.php --}}
 @php
-  use Illuminate\Support\Str;
-  use Illuminate\Support\Facades\Route;
-
-  // controller から必ず渡す前提
+  // controller から渡される前提
   $companies = collect($companiesTop ?? []);
   $jobs      = collect($jobsTop ?? []);
 
-  $companyIndexUrl = Route::has('front.company.index') ? route('front.company.index') : url('/company');
-  $jobIndexUrl     = Route::has('front.jobs.index')     ? route('front.jobs.index')     : url('/jobs');
+  $companyIndexUrl = \Illuminate\Support\Facades\Route::has('front.company.index')
+      ? route('front.company.index') : url('/company');
+  $jobIndexUrl     = \Illuminate\Support\Facades\Route::has('front.jobs.index')
+      ? route('front.jobs.index') : url('/jobs');
 @endphp
 
 <div style="max-width: 920px; margin: 24px auto 0;">
@@ -25,21 +25,44 @@
       <ul style="list-style:none;margin:0;padding:0 0 8px;">
         @foreach($companies as $c)
           @php
-            $logo = $c->logo_path ?? null;
-            if ($logo && !Str::startsWith($logo,['http://','https://','/'])) $logo = asset($logo);
-            $param = ($c->slug ?? null) ?: ($c->id ?? null);
+            // 表示用リンクキー
+            $param   = ($c->slug ?? null) ?: ($c->id ?? null);
             $showUrl = $param
-              ? (Route::has('front.company.show') ? route('front.company.show',$param) : url('/company/'.$param))
+              ? ( \Illuminate\Support\Facades\Route::has('front.company.show')
+                  ? route('front.company.show', ['company' => $param])
+                  : url('/company/'.$param) )
               : '#';
+
+            // ★ ロゴURLの決定：controller 付与の logoUrl を最優先
+            $logoUrl = is_array($c) ? ($c['logoUrl'] ?? null) : ($c->logoUrl ?? null);
+
+            // 保険：logoUrl が無い環境でも既存カラムから解決（/storage・public直下対応）
+            if (empty($logoUrl)) {
+              $raw = null;
+              foreach (['logo','logo_path','image','thumbnail','thumb','main_image','cover','cover_image'] as $col) {
+                if (!empty($c->$col ?? null)) { $raw = $c->$col; break; }
+              }
+              if ($raw) {
+                if (preg_match('#^https?://#', $raw) || str_starts_with($raw, '/')) {
+                  $logoUrl = $raw;
+                } elseif (\Illuminate\Support\Facades\Storage::disk('public')->exists($raw)) {
+                  $logoUrl = \Illuminate\Support\Facades\Storage::disk('public')->url($raw);
+                } elseif (file_exists(public_path($raw))) {
+                  $logoUrl = asset($raw);
+                }
+              }
+            }
+
+            // フォールバック
+            if (empty($logoUrl)) {
+              $logoUrl = asset('images/noimage.svg');
+            }
           @endphp
+
           <li style="border-top:1px solid #eef2f7;">
             <a href="{{ $showUrl }}" style="display:flex;gap:12px;align-items:center;padding:12px 16px;text-decoration:none;color:inherit;">
               <div style="width:48px;height:48px;background:#f1f5f9;border-radius:8px;display:grid;place-items:center;overflow:hidden;flex:0 0 auto;">
-                @if($logo)
-                  <img src="{{ $logo }}" alt="" style="max-width:100%;max-height:100%;object-fit:contain;">
-                @else
-                  <span style="font-size:11px;color:#94a3b8;">no image</span>
-                @endif
+                <img src="{{ $logoUrl }}" alt="" style="max-width:100%;max-height:100%;object-fit:contain;" loading="lazy">
               </div>
               <div style="min-width:0;">
                 <div style="font-weight:600;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
@@ -69,18 +92,21 @@
       <ul style="list-style:none;margin:0;padding:0 0 16px;">
         @foreach($jobs as $j)
           @php
-            // "/jobs/aa" のような値でも slug="aa" に正規化
             $slugRaw = (string)($j->slug ?? '');
-            if (Str::startsWith($slugRaw, ['/jobs/', 'jobs/'])) {
-                $slugRaw = ltrim(preg_replace('#^/?jobs/#', '', $slugRaw), '/');
+            if (\Illuminate\Support\Str::startsWith($slugRaw, ['/jobs/', 'jobs/'])) {
+              $slugRaw = ltrim(preg_replace('#^/?jobs/#', '', $slugRaw), '/');
             }
             $p = $slugRaw !== '' ? $slugRaw : ($j->id ?? null);
             $showUrl = $p
-              ? (Route::has('front.jobs.show') ? route('front.jobs.show',$p) : url('/jobs/'.$p))
+              ? ( \Illuminate\Support\Facades\Route::has('front.jobs.show')
+                  ? route('front.jobs.show', $p)
+                  : url('/jobs/'.$p) )
               : '#';
 
             $thumb = $j->thumbnail_path ?? null;
-            if ($thumb && !Str::startsWith($thumb,['http://','https://','/'])) $thumb = asset($thumb);
+            if ($thumb && !\Illuminate\Support\Str::startsWith($thumb, ['http://','https://','/'])) {
+              $thumb = asset($thumb);
+            }
           @endphp
           <li style="border-top:1px solid #eef2f7;">
             <a href="{{ $showUrl }}" style="display:flex;gap:12px;align-items:center;padding:12px 16px;text-decoration:none;color:inherit;">

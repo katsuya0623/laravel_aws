@@ -1,23 +1,36 @@
 <?php
-use App\Http\Controllers\Front\HomeController;
 
 use Illuminate\Support\Facades\Route;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
-use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\Admin\PostController;
-use App\Http\Controllers\Admin\UserController;
+// Top / Front
+use App\Http\Controllers\Front\HomeController;
 use App\Http\Controllers\Front\LandingController;
 use App\Http\Controllers\Front\PostController as FrontPostController;
-
-// フロント 企業 / 求人
-use App\Http\Controllers\Front\CompanyController;
+use App\Http\Controllers\Front\CompanyController as FCompanyController;
 use App\Http\Controllers\Front\JobController as FrontJobController;
+use App\Http\Controllers\Front\ApplicationController;
 
-// 管理 企業 / 求人
-use App\Http\Controllers\Admin\CompanyController as AdminCompanyController;
+// Admin
+use App\Http\Controllers\Admin\PostController;
+use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\JobController as AdminJobController;
+use App\Http\Controllers\Admin\CompanyController as AdminCompanyController;
+use App\Http\Controllers\Admin\ApplicationsController;  // 管理者：応募一覧
+
+// Auth / Profile
+use App\Http\Controllers\ProfileController;
+
+// Favorites
+use App\Http\Controllers\FavoriteController;
+
+// Users(企業側)
+use App\Http\Controllers\Users\ApplicantController;
+use App\Http\Controllers\Users\SponsoredArticleController;
+
+// Role middleware (クラス直指定で利用)
+use App\Http\Middleware\EnsureUserRole;
 
 /*
 |--------------------------------------------------------------------------
@@ -25,64 +38,83 @@ use App\Http\Controllers\Admin\JobController as AdminJobController;
 |--------------------------------------------------------------------------
 */
 
-// --- フロント
+// ===== Front base =====
 Route::get('/blog', [LandingController::class, 'index'])->name('home');
 
-/* ▼ フロント記事（slug でも ID でも OK）※ front_public.php より前に置く */
-Route::get('/posts', [FrontPostController::class, 'index'])->name('front.posts.index');
-Route::get('/posts/{slugOrId}', [FrontPostController::class, 'show'])->name('front.posts.show');
-/* ▲ ここまで */
+/*
+| ===== Front posts (slug or id) =====
+| ※ ここでは定義しない（front_public.php 側にある想定／重複回避）
+*/
 
-/* ▼ 企業プロフィール（ログインユーザーの編集用）← ここを先に置くのが重要！ */
-Route::middleware(['auth'])->group(function () {
-    Route::get('/company/edit', [\App\Http\Controllers\CompanyProfileController::class, 'edit'])->name('user.company.edit');
+// ===== Company profile (企業ユーザーのみ) =====
+Route::middleware(['auth', EnsureUserRole::class . ':user'])->group(function () {
+    Route::get('/company/edit',    [\App\Http\Controllers\CompanyProfileController::class, 'edit'])->name('user.company.edit');
     Route::post('/company/update', [\App\Http\Controllers\CompanyProfileController::class, 'update'])->name('user.company.update');
 });
 
-/* ▼ 公開側 企業 / 求人（slug or id 想定） */
-
-// === 旧URL救済（恒久リダイレクト 301） ===
-// /company/company → /company
-// /jobs/jobs       → /jobs
-// /companys, /companies → /company
+// ===== Legacy redirects (301) =====
 Route::permanentRedirect('/company/company', '/company');
-Route::permanentRedirect('/jobs/jobs', '/jobs');
-Route::permanentRedirect('/companys', '/company');
-Route::permanentRedirect('/companies', '/company');
+Route::permanentRedirect('/jobs/jobs',       '/jobs');
+Route::permanentRedirect('/companys',        '/company');
+Route::permanentRedirect('/companies',       '/company');
 
-// ▼ 公開側 企業 (/company, /company/{slug or id})
-Route::prefix('company')->group(function () {
-    // 一覧: /company
-    Route::get('/', [CompanyController::class, 'index'])->name('front.company.index');
-
-    // 詳細: /company/{slugOrId}  ※ edit は除外
-    Route::get('/{slugOrId}', [CompanyController::class, 'show'])
-        ->where('slugOrId', '^(?!edit$)([A-Za-z0-9\-]+|\d+)$')
-        ->name('front.company.show');
+// ===== Front: Company (list/detail) =====
+Route::prefix('company')->name('front.company.')->group(function () {
+    Route::get('/', [FCompanyController::class, 'index'])->name('index');
+    Route::get('/{company}', [FCompanyController::class, 'show'])->name('show'); // {company:slug} でもOK
 });
 
-// ▼ 公開側 求人 (/jobs, /jobs/{slug or id})
-use App\Http\Controllers\Front\ApplicationController;
-Route::prefix('jobs')->group(function () {
-    // 応募: /jobs/{job:slug}/apply（先に定義して /{slugOrId} と競合しないように）
-    Route::post('/{job:slug}/apply', [ApplicationController::class, 'store'])->name('front.jobs.apply');
+// ===== Front: Jobs (list/detail/apply) =====
+Route::prefix('recruit_jobs')->group(function () {
+    // 応募送信：エンドユーザーのみ
+    Route::post('/{job:slug}/apply', [ApplicationController::class, 'store'])
+        ->middleware(['auth', EnsureUserRole::class . ':enduser'])
+        ->name('front.jobs.apply');
 
-    // 一覧: /jobs
     Route::get('/', [FrontJobController::class, 'index'])->name('front.jobs.index');
-
-    // 詳細: /jobs/{slugOrId}
     Route::get('/{slugOrId}', [FrontJobController::class, 'show'])
         ->where('slugOrId', '^([A-Za-z0-9\-]+|\d+)$')
         ->name('front.jobs.show');
-});
-/* ▲ ここまで */
 
-// --- ダッシュボード（ログイン必須）
+    // お気に入り：エンドユーザーのみ
+    Route::middleware(['auth', EnsureUserRole::class . ':enduser'])->group(function () {
+        Route::post('/{job}/favorite',        [FavoriteController::class, 'store'])->whereNumber('job')->name('favorites.store');
+        Route::delete('/{job}/favorite',      [FavoriteController::class, 'destroy'])->whereNumber('job')->name('favorites.destroy');
+        Route::post('/{job}/favorite/toggle', [FavoriteController::class, 'toggle'])->whereNumber('job')->name('favorites.toggle');
+    });
+});
+
+/* ===== MYPAGE: Applications & Favorites（エンドユーザーのみ） ===== */
+Route::middleware(['auth', EnsureUserRole::class . ':enduser'])->prefix('mypage')->name('mypage.')->group(function () {
+    Route::get('/applications', [ApplicationController::class, 'index'])->name('applications.index');
+    Route::get('/applications/{application}', [ApplicationController::class, 'show'])
+        ->whereNumber('application')
+        ->name('applications.show');
+
+    Route::get('/favorite', [FavoriteController::class, 'index'])->name('favorites.index');
+});
+
+/* ===== USERS（企業側のみ） ===== */
+Route::middleware(['auth', EnsureUserRole::class . ':user'])->prefix('users')->name('users.')->group(function () {
+    // 応募者一覧
+    Route::get('/applicants', [ApplicantController::class, 'index'])->name('applicants.index');
+    Route::get('/applicants/{application}', [ApplicantController::class, 'show'])
+        ->whereNumber('application')
+        ->name('applicants.show');
+    Route::patch('/applicants/{application}/status', [ApplicantController::class, 'updateStatus'])
+        ->whereNumber('application')
+        ->name('applicants.status');
+
+    // スポンサー記事一覧
+    Route::get('/sponsored-articles', [SponsoredArticleController::class, 'index'])
+        ->name('sponsored_articles.index');
+});
+
+// ===== Dashboard（ログイン者全般） =====
 Route::view('/dashboard', 'dashboard')->middleware(['auth'])->name('dashboard');
 
-// --- 管理系 (/admin/...)
-Route::prefix('admin')->middleware(['auth'])->name('admin.')->group(function () {
-    // posts（既存のまま）
+// ===== Admin（管理者のみ） =====
+Route::prefix('admin')->middleware(['auth', EnsureUserRole::class . ':admin'])->name('admin.')->group(function () {
     if (class_exists(PostController::class)) {
         Route::resource('posts', PostController::class);
     } else {
@@ -91,7 +123,6 @@ Route::prefix('admin')->middleware(['auth'])->name('admin.')->group(function () 
         Route::post('posts', fn () => abort(501));
     }
 
-    // users（既存のまま）
     if (class_exists(UserController::class)) {
         Route::resource('users', UserController::class)->except(['show']);
     } else {
@@ -99,54 +130,66 @@ Route::prefix('admin')->middleware(['auth'])->name('admin.')->group(function () 
         Route::get('users/create', fn () => response('users create (stub)', 200))->name('users.create');
     }
 
-    // 追加: 企業と求人の管理 CRUD
-    Route::resource('companies', AdminCompanyController::class);
-    Route::resource('jobs', AdminJobController::class);
+    Route::resource('recruit_jobs', AdminJobController::class)
+        ->parameters(['recruit_jobs' => 'job'])
+        ->names([
+            'index'   => 'jobs.index',
+            'create'  => 'jobs.create',
+            'store'   => 'jobs.store',
+            'show'    => 'jobs.show',
+            'edit'    => 'jobs.edit',
+            'update'  => 'jobs.update',
+            'destroy' => 'jobs.destroy',
+        ]);
+
+    Route::resource('companies', AdminCompanyController::class)->except(['show']);
+
+    Route::get('applications', [ApplicationsController::class, 'index'])->name('applications.index');
+    Route::get('applications/export', [ApplicationsController::class, 'export'])->name('applications.export');
+
+    // 管理配下: アップロード疎通テスト
+    Route::match(['get','post'], 'posts/__upload-test', function (Request $r) {
+        if ($r->isMethod('post')) {
+            if (!$r->hasFile('f')) return 'no file';
+            $f = $r->file('f');
+            if (!$f->isValid()) return 'err: '.$f->getError();
+            $p = $f->store('thumbnails', 'public');
+            return 'stored: '.Storage::url($p);
+        }
+        return '<form method="post" enctype="multipart/form-data">'.csrf_field().'<input type="file" name="f" accept="image/*"><button>send</button></form>';
+    })->name('admin.posts.uploadtest');
 });
 
-// --- プロフィール（Breeze がある場合のみ）
+// ===== Breeze Profile =====
 Route::middleware('auth')->group(function () {
     if (class_exists(ProfileController::class)) {
-        Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
+        Route::get('/profile',   [ProfileController::class, 'edit'])->name('profile.edit');
         Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
-        Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+        Route::delete('/profile',[ProfileController::class, 'destroy'])->name('profile.destroy');
+        Route::get('/profile/edit', fn () => redirect()->route('profile.edit'))->name('user.profile.edit');
     }
 });
 
-// --- 認証ルート
+// ===== Auth routes include =====
 if (file_exists(__DIR__.'/auth.php')) {
     require __DIR__.'/auth.php';
 }
 
-// --- 公開側ルート（存在すれば読み込み）
+// ===== Front public include =====
 if (file_exists(__DIR__.'/front_public.php')) {
     require __DIR__.'/front_public.php';
 }
 
-/* === FRONT_ROUTES_GUARD (do not duplicate) === */
-if (!Route::has('front.home')) {
-    Route::get('/blog', [\App\Http\Controllers\Front\HomeController::class, 'index'])->name('front.home');
-
-    // ★ /posts 系はすでに前方で登録済み。ここでは定義しない（重複禁止）
-    // Route::get('/posts', ...);
-    // Route::get('/posts/{post:slug}', ...);
-
-    Route::get('/category/{slug}', [\App\Http\Controllers\Front\CategoryController::class, 'show'])->name('front.category.show');
-    Route::get('/tag/{slug}', [\App\Http\Controllers\Front\TagController::class, 'show'])->name('front.tag.show');
-}
-
-/* ===== DEBUG (必要なら後で削除) ===== */
+/* ===== DEBUG / DIAG ===== */
 Route::get('/__ping', fn() => 'pong');
 
 Route::get('/__create-plain', function () {
-    $post = new \App\Models\Post();
-    $post->published_at = now();
+    $post = new \App\Models\Post(); $post->published_at = now();
     $categories = \App\Models\Category::orderBy('name')->get();
     $tags = \App\Models\Tag::orderBy('name')->get();
     return view('admin.posts.debug_create', compact('post','categories','tags'));
 });
-
-Route::get('/ping-ok', fn() => 'pong');
+Route::get('/ping-ok', fn () => 'pong');
 
 Route::get('/debug-create', function () {
     $post = new \App\Models\Post(); $post->published_at = now();
@@ -161,24 +204,10 @@ Route::match(['get','post'], '/__upload-test', function (Request $r) {
         if (!$r->hasFile('f')) return 'no file';
         $f = $r->file('f');
         if (!$f->isValid()) return 'err: '.$f->getError();
-        $p = $f->store('thumbnails', 'public');   // 文字列パスが返る
+        $p = $f->store('thumbnails', 'public');
         return 'stored: '.Storage::url($p);
     }
     return '<form method="post" enctype="multipart/form-data">'.csrf_field().'<input type="file" name="f" accept="image/*"><button>send</button></form>';
-});
-
-// 管理配下: アップロード疎通テスト（要ログイン）
-Route::prefix('admin')->middleware(['auth'])->group(function () {
-    Route::match(['get','post'], 'posts/__upload-test', function (Request $r) {
-        if ($r->isMethod('post')) {
-            if (!$r->hasFile('f')) return 'no file';
-            $f = $r->file('f');
-            if (!$f->isValid()) return 'err: '.$f->getError();
-            $p = $f->store('thumbnails', 'public'); // 文字列パスが返る
-            return 'stored: '.Storage::url($p);
-        }
-        return '<form method="post" enctype="multipart/form-data">'.csrf_field().'<input type="file" name="f" accept="image/*"><button>send</button></form>';
-    })->name('admin.posts.uploadtest');
 });
 
 // 事前アップロードAPI（要ログイン）
@@ -193,7 +222,6 @@ Route::post('/__preupload', function (Request $r) {
     if ($f->getSize() > 40 * 1024 * 1024) {
         return response()->json(['ok' => false, 'msg' => 'too large'], 413);
     }
-
     $path = $f->store('thumbnails', 'public');
 
     return response()->json([
@@ -203,52 +231,8 @@ Route::post('/__preupload', function (Request $r) {
     ]);
 })->middleware(['auth'])->name('preupload');
 
-// ==== User Profile (自己紹介) ====
-Route::middleware(['auth'])->group(function () {
-    Route::get('/profile/edit', [\App\Http\Controllers\UserProfileController::class, 'edit'])->name('user.profile.edit');
-    Route::post('/profile/update', [\App\Http\Controllers\UserProfileController::class, 'update'])->name('user.profile.update');
-});
+// ==== Root: 無名リダイレクト（重複回避）====
+Route::permanentRedirect('/', '/blog');
 
-/* ===== TEMP DIAG: /__company-diag (作業後に削除推奨) ===== */
-Route::get('/__company-diag', function () {
-    $count = \App\Models\Company::withoutGlobalScopes()->count();
-    $route = collect(\Illuminate\Support\Facades\Route::getRoutes())
-        ->firstWhere('uri', 'company');
-    return response()->json([
-        'company_count' => $count,
-        'company_route' => optional($route)->getActionName(),
-        'view_used'     => 'front.company.index',
-    ]);
-});
-
-/* removed debug */
-
-// ★ トップページ
-Route::get('/', [HomeController::class, 'index'])->name('front.home');
-/* ==== TEMP DIAG START: COMPANIES ==== */
-\Illuminate\Support\Facades\Route::get('/__companies-diag', function () {
-    $model      = new \App\Models\Company();
-    $modelConn  = $model->getConnectionName() ?: config('database.default');
-
-    $defConn    = config('database.default');
-    $defDb      = config("database.connections.$defConn.database");
-    $modDb      = config("database.connections.$modelConn.database");
-
-    $defCount   = \Illuminate\Support\Facades\DB::connection($defConn)->table('companies')->count();
-    $modCount   = \Illuminate\Support\Facades\DB::connection($modelConn)->table('companies')->count();
-
-    $sampleDef  = \Illuminate\Support\Facades\DB::connection($defConn)->table('companies')->orderByDesc('id')->limit(3)->get();
-    $sampleMod  = \Illuminate\Support\Facades\DB::connection($modelConn)->table('companies')->orderByDesc('id')->limit(3)->get();
-
-    return response()->json([
-        'default_connection' => $defConn,
-        'default_database'   => $defDb,
-        'default_count'      => $defCount,
-        'model_connection'   => $modelConn,
-        'model_database'     => $modDb,
-        'model_count'        => $modCount,
-        'sample_default'     => $sampleDef,
-        'sample_model'       => $sampleMod,
-    ]);
-});
-/* ==== TEMP DIAG END ==== */
+// テスト: 管理者のみOK（クラス直指定）
+Route::get('/__role-test', fn() => 'ok')->middleware(['auth', EnsureUserRole::class . ':admin']);

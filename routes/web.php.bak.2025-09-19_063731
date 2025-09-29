@@ -48,7 +48,7 @@ Route::prefix('company')->group(function () {
         ->name('front.company.show');   // 企業詳細
 });
 
-Route::prefix('jobs')->group(function () {
+Route::prefix('recruit_jobs')->group(function () {
     Route::get('/', [FrontJobController::class, 'index'])->name('front.jobs.index');   // 一覧(仮)
     Route::get('/{slugOrId}', [FrontJobController::class, 'show'])
         ->where('slugOrId', '[A-Za-z0-9\-]+|\d+$')
@@ -80,7 +80,7 @@ Route::prefix('admin')->middleware(['auth'])->name('admin.')->group(function () 
 
     // 追加: 企業と求人の管理 CRUD
     Route::resource('companies', AdminCompanyController::class);
-    Route::resource('jobs', AdminJobController::class);
+    Route::resource('recruit_jobs', AdminJobController::class);
 });
 
 // --- プロフィール（Breeze がある場合のみ）

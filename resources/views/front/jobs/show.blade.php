@@ -3,9 +3,17 @@
 
 @section('content')
   <article class="job-detail" style="max-width:720px;margin:24px auto;">
-    <h1 style="font-size:24px;font-weight:700;margin-bottom:12px;">
+    <h1 style="font-size:24px;font-weight:700;margin-bottom:8px;">
       {{ $job->title ?? '求人詳細' }}
     </h1>
+
+    {{-- ★ お気に入りボタン＋件数 --}}
+    <div style="margin-bottom:16px;display:flex;gap:10px;align-items:center;">
+      <x-favorite-toggle :job="$job" />
+      <span style="font-size:12px;color:#6b7280;">
+        ★ {{ $job->favored_by_count ?? $job->favoredBy()->count() }}
+      </span>
+    </div>
 
     @if (session('status'))
       <div style="background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;padding:10px;border-radius:6px;margin-bottom:16px;">

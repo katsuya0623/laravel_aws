@@ -8,7 +8,10 @@
       <p class="text-emerald-600 text-sm">{{ session('status') }}</p>
     @endif
 
-    <form method="POST" action="{{ route('user.company.update') }}" enctype="multipart/form-data" class="space-y-6">
+    <form method="POST"
+          action="{{ route('user.company.update') }}"
+          enctype="multipart/form-data"
+          class="space-y-6">
       @csrf
 
       <div class="grid md:grid-cols-2 gap-4">
@@ -28,21 +31,43 @@
 
       <div>
         <x-input-label for="description" value="事業内容 / 紹介" />
-        <textarea id="description" name="description" rows="5" class="mt-1 block w-full border-gray-300 rounded-md">{{ old('description', $company->description) }}</textarea>
+        <textarea id="description" name="description" rows="5"
+                  class="mt-1 block w-full border-gray-300 rounded-md">{{ old('description', $company->description) }}</textarea>
         <x-input-error :messages="$errors->get('description')" class="mt-2" />
       </div>
 
-      <div class="flex items-center gap-4">
-        <div>
-          <x-input-label for="logo" value="ロゴ画像" />
-          <input id="logo" name="logo" type="file" accept="image/*" class="mt-1 block w-full">
+      {{-- ロゴ（DBは company_profiles.logo_path に保存） --}}
+      <div class="flex items-start gap-6">
+        <div class="grow">
+          <x-input-label for="logo" value="ロゴ画像（最大10MB / SVG, PNG, JPG, WebP）" />
+          <input id="logo" name="logo" type="file"
+                 accept=".svg,.svgz,.png,.jpg,.jpeg,.webp"
+                 class="mt-1 block w-full">
           <x-input-error :messages="$errors->get('logo')" class="mt-2" />
+
+          @if(!empty($company->logo_path))
+            <label class="inline-flex items-center gap-2 mt-3 text-sm">
+              <input type="checkbox" name="remove_logo" value="1">
+              ロゴを削除する
+            </label>
+          @endif
         </div>
+
+        @php
+          $path = $company->logo_path ?? null;
+          $logoUrl = $path && \Illuminate\Support\Facades\Storage::disk('public')->exists($path)
+                        ? \Illuminate\Support\Facades\Storage::disk('public')->url($path)
+                        : asset('images/noimage.svg'); // 任意のフォールバック
+        @endphp
         <div class="shrink-0">
-          @php
-            $logoUrl = $company->logo_path ? asset('storage/'.$company->logo_path) : asset('logo.svg');
-          @endphp
-          <img src="{{ $logoUrl }}" alt="logo" class="w-24 h-24 rounded object-cover border">
+          <div class="text-xs text-gray-500 mb-1">プレビュー</div>
+          <img id="logoPreview"
+               src="{{ $logoUrl }}"
+               alt="logo preview"
+               class="w-24 h-24 rounded object-contain border bg-white">
+          <div class="text-[10px] text-gray-500 mt-1 break-all max-w-[10rem]">
+            {{ $path ?: '（なし）' }}
+          </div>
         </div>
       </div>
 
@@ -121,4 +146,19 @@
       </div>
     </form>
   </div>
+
+  {{-- 選択したロゴを即時プレビュー --}}
+  <script>
+    const input = document.getElementById('logo');
+    const img   = document.getElementById('logoPreview');
+    if (input && img) {
+      input.addEventListener('change', (e) => {
+        const f = e.target.files && e.target.files[0];
+        if (!f) return;
+        const url = URL.createObjectURL(f);
+        img.src = url;
+        img.onload = () => URL.revokeObjectURL(url);
+      });
+    }
+  </script>
 </x-app-layout>

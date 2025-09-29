@@ -24,11 +24,13 @@
           <tbody>
             @foreach($list as $c)
               @php
-                $id   = is_array($c)?($c['id']??null):($c->id??null);
-                $name = is_array($c)?($c['name']??null):($c->name??null);
-                $slug = is_array($c)?($c['slug']??null):($c->slug??null);
+                $id      = is_array($c)?($c['id']??null):($c->id??null);
+                $name    = is_array($c)?($c['name']??null):($c->name??null);
+                $slug    = is_array($c)?($c['slug']??null):($c->slug??null);
                 $updated = is_array($c)?($c['updated_at']??null):($c->updated_at??null);
-                $param = $slug ?: $id;
+                $param   = $slug ?: $id;
+
+                // 更新日の表示
                 $updatedText = '-';
                 if ($updated instanceof \Illuminate\Support\Carbon) {
                   $updatedText = $updated->format('Y年n月j日');
@@ -37,24 +39,34 @@
                   catch (\Exception $e) { $updatedText = (string)$updated; }
                 }
 
-                // 画像候補（モデルに image_url プロパティを持たせるのがベストだが、とりあえず想定カラムでチェック）
-                $img = null;
-                foreach (['logo','logo_path','image','thumbnail','thumb','main_image','cover','cover_image'] as $col) {
-                  if (!empty($c->$col ?? null)) {
-                    $img = $c->$col;
-                    break;
+                // ★ 画像URL：コントローラで付与した logoUrl を最優先
+                $logoUrl = is_array($c) ? ($c['logoUrl'] ?? null) : ($c->logoUrl ?? null);
+
+                // 保険：logoUrl が無いときは既存カラムから推測（public/storage対応）
+                if (empty($logoUrl)) {
+                  $raw = null;
+                  foreach (['logo','logo_path','image','thumbnail','thumb','main_image','cover','cover_image'] as $col) {
+                    if (!empty($c->$col ?? null)) { $raw = $c->$col; break; }
+                  }
+                  if ($raw) {
+                    if (preg_match('#^https?://#', $raw) || str_starts_with($raw, '/')) {
+                      $logoUrl = $raw;
+                    } elseif (\Illuminate\Support\Facades\Storage::disk('public')->exists($raw)) {
+                      $logoUrl = \Illuminate\Support\Facades\Storage::disk('public')->url($raw);
+                    } elseif (file_exists(public_path($raw))) {
+                      $logoUrl = asset($raw);
+                    }
                   }
                 }
               @endphp
+
               <tr style="border-top:1px solid #e5e7eb;">
                 <td style="padding:10px 16px;">{{ $id }}</td>
                 <td style="padding:10px 16px;">
-                  @if($img)
-                    <img src="{{ \Illuminate\Support\Str::startsWith($img, ['http://','https://','/'])
-                                ? $img
-                                : \Illuminate\Support\Facades\Storage::url($img) }}"
+                  @if(!empty($logoUrl))
+                    <img src="{{ $logoUrl }}"
                          alt="{{ $name ?? 'No Name' }}"
-                         style="max-width:100px; max-height:80px; object-fit:cover; border-radius:4px;">
+                         style="max-width:100px; max-height:80px; object-fit:contain; border:1px solid #e5e7eb; background:#fff; border-radius:4px;">
                   @else
                     <div style="width:100px; height:80px; background:#f3f4f6; color:#9ca3af;
                                 display:flex; align-items:center; justify-content:center; font-size:12px; border-radius:4px;">
@@ -64,7 +76,9 @@
                 </td>
                 <td style="padding:10px 16px;">
                   @if(!is_null($param))
-                    <a href="{{ route('front.company.show', $param) }}" style="color:#4f46e5; text-decoration:none;">
+                    {{-- ★ A案：ルートのパラメータ名に合わせる（company） --}}
+                    <a href="{{ route('front.company.show', ['company' => $param]) }}"
+                       style="color:#4f46e5; text-decoration:none;">
                       {{ $name ?? '(名称未設定)' }}
                     </a>
                   @else

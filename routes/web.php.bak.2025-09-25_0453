@@ -1,0 +1,203 @@
+<?php
+
+use Illuminate\Support\Facades\Route;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+
+// Top / Front
+use App\Http\Controllers\Front\HomeController;
+use App\Http\Controllers\Front\LandingController;
+use App\Http\Controllers\Front\PostController as FrontPostController;
+use App\Http\Controllers\Front\CompanyController as FCompanyController;
+use App\Http\Controllers\Front\JobController as FrontJobController;
+use App\Http\Controllers\Front\ApplicationController;
+
+// Admin
+use App\Http\Controllers\Admin\PostController;
+use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Admin\JobController as AdminJobController;
+use App\Http\Controllers\Admin\CompanyController as AdminCompanyController;
+
+// Auth / Profile
+use App\Http\Controllers\ProfileController;
+
+/*
+|--------------------------------------------------------------------------
+| Web Routes
+|--------------------------------------------------------------------------
+*/
+
+// ===== Front base =====
+Route::get('/blog', [LandingController::class, 'index'])->name('home');
+
+// ===== Front posts (slug or id) =====
+Route::get('/posts', [FrontPostController::class, 'index'])->name('front.posts.index');
+Route::get('/posts/{slugOrId}', [FrontPostController::class, 'show'])->name('front.posts.show');
+
+// ===== Company profile (logged-in user's editor) =====
+Route::middleware(['auth'])->group(function () {
+    Route::get('/company/edit',   [\App\Http\Controllers\CompanyProfileController::class, 'edit'])->name('user.company.edit');
+    Route::post('/company/update',[\App\Http\Controllers\CompanyProfileController::class, 'update'])->name('user.company.update');
+});
+
+// ===== Legacy redirects (301) =====
+Route::permanentRedirect('/company/company', '/company');
+Route::permanentRedirect('/jobs/jobs',       '/jobs');
+Route::permanentRedirect('/companys',        '/company');
+Route::permanentRedirect('/companies',       '/company');
+
+// ===== Front: Company (list/detail) =====
+Route::prefix('company')->name('front.company.')->group(function () {
+    Route::get('/', [FCompanyController::class, 'index'])->name('index');
+    // /company/{id or slug}  → slug運用なら {company:slug} に変更
+    Route::get('/{company}', [FCompanyController::class, 'show'])->name('show');
+});
+
+// ===== Front: Jobs (list/detail/apply) =====
+Route::prefix('recruit_jobs')->group(function () {
+    // apply を先に
+    Route::post('/{job:slug}/apply', [ApplicationController::class, 'store'])->name('front.jobs.apply');
+
+    Route::get('/', [FrontJobController::class, 'index'])->name('front.jobs.index');
+
+    Route::get('/{slugOrId}', [FrontJobController::class, 'show'])
+        ->where('slugOrId', '^([A-Za-z0-9\-]+|\d+)$')
+        ->name('front.jobs.show');
+});
+
+/* ===== MYPAGE: Applications ===== */
+Route::middleware(['auth'])->prefix('mypage')->name('mypage.')->group(function () {
+    Route::get('/applications', [ApplicationController::class, 'index'])->name('applications.index');
+    Route::get('/applications/{application}', [ApplicationController::class, 'show'])
+        ->whereNumber('application')
+        ->name('applications.show');
+});
+
+// ===== Dashboard =====
+Route::view('/dashboard', 'dashboard')->middleware(['auth'])->name('dashboard');
+
+// ===== Admin =====
+Route::prefix('admin')->middleware(['auth'])->name('admin.')->group(function () {
+    // posts
+    if (class_exists(PostController::class)) {
+        Route::resource('posts', PostController::class);
+    } else {
+        Route::get('posts', fn () => response('posts index (stub)', 200))->name('posts.index');
+        Route::get('posts/create', fn () => response('posts create (stub)', 200))->name('posts.create');
+        Route::post('posts', fn () => abort(501));
+    }
+
+    // users
+    if (class_exists(UserController::class)) {
+        Route::resource('users', UserController::class)->except(['show']);
+    } else {
+        Route::get('users', fn () => response('users index (stub)', 200))->name('users.index');
+        Route::get('users/create', fn () => response('users create (stub)', 200))->name('users.create');
+    }
+
+    // jobs
+    Route::resource('recruit_jobs', AdminJobController::class);
+    // === backward-compatible aliases ===
+    Route::resource('jobs', AdminJobController::class)->names('jobs');
+
+    // companies
+    Route::resource('companies', AdminCompanyController::class)->except(['show']);
+});
+
+// ===== Breeze Profile =====
+Route::middleware('auth')->group(function () {
+    if (class_exists(ProfileController::class)) {
+        Route::get('/profile',   [ProfileController::class, 'edit'])->name('profile.edit');
+        Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+        Route::delete('/profile',[ProfileController::class, 'destroy'])->name('profile.destroy');
+
+        // ★ 互換エイリアス（古いリンク route('user.profile.edit') 対応）
+        Route::get('/profile/edit', fn () => redirect()->route('profile.edit'))
+            ->name('user.profile.edit');
+    }
+});
+
+// ===== Auth routes include =====
+if (file_exists(__DIR__.'/auth.php')) {
+    require __DIR__.'/auth.php';
+}
+
+// ===== Front public include =====
+if (file_exists(__DIR__.'/front_public.php')) {
+    require __DIR__.'/front_public.php';
+}
+
+/* === FRONT_ROUTES_GUARD (do not duplicate) === */
+if (!Route::has('front.home')) {
+    Route::get('/blog', [\App\Http\Controllers\Front\HomeController::class, 'index'])->name('front.home');
+    Route::get('/category/{slug}', [\App\Http\Controllers\Front\CategoryController::class, 'show'])->name('front.category.show');
+    Route::get('/tag/{slug}',      [\App\Http\Controllers\Front\TagController::class, 'show'])->name('front.tag.show');
+}
+
+/* ===== DEBUG / DIAG ===== */
+Route::get('/__ping', fn() => 'pong');
+
+Route::get('/__create-plain', function () {
+    $post = new \App\Models\Post(); $post->published_at = now();
+    $categories = \App\Models\Category::orderBy('name')->get();
+    $tags = \App\Models\Tag::orderBy('name')->get();
+    return view('admin.posts.debug_create', compact('post','categories','tags'));
+});
+Route::get('/ping-ok', fn() => 'pong');
+
+Route::get('/debug-create', function () {
+    $post = new \App\Models\Post(); $post->published_at = now();
+    $categories = \App\Models\Category::orderBy('name')->get();
+    $tags = \App\Models\Tag::orderBy('name')->get();
+    return view('admin.posts.debug_create', compact('post','categories','tags'));
+});
+
+// 非管理: アップロード疎通テスト
+Route::match(['get','post'], '/__upload-test', function (Request $r) {
+    if ($r->isMethod('post')) {
+        if (!$r->hasFile('f')) return 'no file';
+        $f = $r->file('f');
+        if (!$f->isValid()) return 'err: '.$f->getError();
+        $p = $f->store('thumbnails', 'public');
+        return 'stored: '.Storage::url($p);
+    }
+    return '<form method="post" enctype="multipart/form-data">'.csrf_field().'<input type="file" name="f" accept="image/*"><button>send</button></form>';
+});
+
+// 管理配下: アップロード疎通テスト（要ログイン）
+Route::prefix('admin')->middleware(['auth'])->group(function () {
+    Route::match(['get','post'], 'posts/__upload-test', function (Request $r) {
+        if ($r->isMethod('post')) {
+            if (!$r->hasFile('f')) return 'no file';
+            $f = $r->file('f');
+            if (!$f->isValid()) return 'err: '.$f->getError();
+            $p = $f->store('thumbnails', 'public');
+            return 'stored: '.Storage::url($p);
+        }
+        return '<form method="post" enctype="multipart/form-data">'.csrf_field().'<input type="file" name="f" accept="image/*"><button>send</button></form>';
+    })->name('admin.posts.uploadtest');
+});
+
+// 事前アップロードAPI（要ログイン）
+Route::post('/__preupload', function (Request $r) {
+    if (!$r->hasFile('thumbnail')) {
+        return response()->json(['ok' => false, 'msg' => 'no file'], 422);
+    }
+    $f = $r->file('thumbnail');
+    if (!$f->isValid()) {
+        return response()->json(['ok' => false, 'msg' => 'err: '.$f->getError()], 422);
+    }
+    if ($f->getSize() > 40 * 1024 * 1024) {
+        return response()->json(['ok' => false, 'msg' => 'too large'], 413);
+    }
+    $path = $f->store('thumbnails', 'public');
+
+    return response()->json([
+        'ok'  => true,
+        'path'=> $path,
+        'url' => Storage::url($path),
+    ]);
+})->middleware(['auth'])->name('preupload');
+
+// Top page
+Route::get('/', [HomeController::class, 'index'])->name('front.home');

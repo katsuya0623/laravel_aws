@@ -1,0 +1,108 @@
+<?php
+
+namespace App\Http\Controllers\Front;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
+use App\Models\Application;
+use App\Models\Job;
+
+class ApplicationController extends Controller
+{
+    /** 応募履歴一覧（自分の分だけ） */
+    public function index(Request $request)
+    {
+        $user = $request->user();
+
+        $query = Application::query()->latest('id');
+
+        // applications に user_id 列があるなら user_id で絞る。無ければ email で絞る。
+        if (Schema::hasColumn((new Application)->getTable(), 'user_id')) {
+            $query->where('user_id', $user->id);
+        } else {
+            $query->where('email', $user->email);
+        }
+
+        // 求人タイトル表示用
+        if (Schema::hasColumn((new Application)->getTable(), 'job_id')) {
+            $query->with('job');
+        }
+
+        $apps = $query->paginate(10);
+
+        // ステータス（列が無い場合でも安全）
+        $statusLabels = [
+            'applied'   => '応募済み',
+            'reviewing' => '書類選考中',
+            'interview' => '面接中',
+            'offer'     => '内定',
+            'rejected'  => 'お見送り',
+        ];
+
+        return view('front.applications.index', compact('apps', 'statusLabels'));
+    }
+
+    /** 応募詳細（自分の分だけ） */
+    public function show(Request $request, Application $application)
+    {
+        $user = $request->user();
+
+        // 所有チェック（user_id 列が無い場合は email でチェック）
+        $owns = Schema::hasColumn((new Application)->getTable(), 'user_id')
+            ? ($application->user_id === $user->id)
+            : ($application->email === $user->email);
+
+        abort_unless($owns, 404);
+
+        if (Schema::hasColumn((new Application)->getTable(), 'job_id')) {
+            $application->load('job');
+        }
+
+        $statusLabels = [
+            'applied'   => '応募済み',
+            'reviewing' => '書類選考中',
+            'interview' => '面接中',
+            'offer'     => '内定',
+            'rejected'  => 'お見送り',
+        ];
+
+        return view('front.applications.show', [
+            'app'          => $application,
+            'statusLabels' => $statusLabels,
+        ]);
+    }
+
+    /** 求人詳細からの応募（/jobs/{job:slug}/apply） */
+    public function store(Request $request, Job $job)
+    {
+        if (!$job || !$job->id) {
+            abort(404, 'Job not found');
+        }
+
+        $data = $request->validate([
+            'name'    => ['required','string','max:50'],
+            'email'   => ['required','email'],
+            'phone'   => ['nullable','string','max:50'],
+            'message' => ['nullable','string'],
+        ]);
+
+        $data['job_id'] = $job->id;
+
+        // ログインしていて、applications に user_id 列があるなら保存
+        if ($request->user() && Schema::hasColumn((new Application)->getTable(), 'user_id')) {
+            $data['user_id'] = $request->user()->id;
+        }
+
+        // ステータス列があれば初期値
+        if (Schema::hasColumn((new Application)->getTable(), 'status') && empty($data['status'])) {
+            $data['status'] = 'applied';
+        }
+
+        Application::create($data);
+
+        return redirect()
+            ->route('mypage.applications.index')
+            ->with('status', '応募が送信されました。担当者からご連絡いたします。');
+    }
+}

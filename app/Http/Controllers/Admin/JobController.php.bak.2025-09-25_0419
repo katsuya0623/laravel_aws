@@ -1,0 +1,207 @@
+<?php
+
+namespace App\Http\Controllers\Admin;
+use IlluminateSupportFacadesSchema;
+
+use App\Http\Controllers\Controller;
+use App\Models\Job;
+use App\Models\Company; // 会社リレーションが無ければ削除OK
+use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+use Illuminate\Support\Str;
+
+class JobController extends Controller
+{
+    /** 求人一覧（検索・ステータス絞込付き） */
+    public function index(Request $request)
+    {
+        $q      = trim((string)$request->query('q', ''));
+        $status = trim((string)$request->query('status', ''));
+
+        $jobs = Job::query()
+            ->with('company')
+            ->when($q !== '', function ($query) use ($q) {
+                $query->where(function ($qq) use ($q) {
+                    $qq->where('title',   'like', "%{$q}%")
+                       ->orWhere('excerpt','like', "%{$q}%")
+                       ->orWhere('slug',   'like', "%{$q}%");
+                });
+            })
+            ->when($status !== '', fn ($query) => $query->where('status', $status))
+            ->latest('id')
+            ->paginate(10)
+            ->withQueryString();
+
+        // 右側のタグ（例：statusの一覧）
+        $statuses = Job::query()
+            ->select('status')->whereNotNull('status')->distinct()->pluck('status')->values();
+
+        return view('admin.jobs.index', [
+            'recruit_jobs'     => $jobs,
+            'q'        => $q,
+            'status'   => $status,
+            'statuses' => $statuses,
+        ]);
+    }
+
+    /** 作成フォーム */
+    public function create()
+    {
+        $companies = class_exists(Company::class)
+            ? Company::query()->orderBy('name')->pluck('name', 'id')
+            : collect();
+
+        return view('admin.jobs.create', compact('companies'));
+    }
+
+    /** 登録処理 */
+    public function store(Request $request)
+    {
+        $data = $request->validate($this->rules());
+        // SQLite jobsテーブルのqueue列対策
+        if (\Illuminate\Support\Facades\Schema::hasColumn('recruit_jobs','queue') && empty($data['queue'])) {
+            $data['queue'] = '';
+        }
+
+
+        // チェックボックスは boolean に正規化
+        $data['visa_support']       = $request->boolean('visa_support');
+        $data['relocation_support'] = $request->boolean('relocation_support');
+
+        // slug 自動生成（未入力時）
+        if (empty($data['slug']) && !empty($data['title'])) {
+            $base = Str::slug($data['title']);
+            $slug = $base ?: Str::random(8);
+            $i = 1;
+            while (Job::where('slug', $slug)->exists()) {
+                $slug = $base.'-'.$i++;
+            }
+            $data['slug'] = $slug;
+        }
+
+        // 公開時、公開日が空なら現在時刻
+        if (($data['status'] ?? null) === 'published' && empty($data['published_at'])) {
+            $data['published_at'] = now();
+        }
+
+        // 給与デフォルト
+        $data['salary_currency'] = $data['salary_currency'] ?: 'JPY';
+        $data['salary_unit']     = $data['salary_unit']     ?: 'month';
+
+        $job = Job::create($data);
+
+        return redirect()->route('admin.jobs.index')
+            ->with('status', "求人 #{$job->id} を作成しました");
+    }
+
+    /** 詳細 */
+    public function show(Job $job)
+    {
+        return view('admin.jobs.show', compact('job'));
+    }
+
+    /** 編集フォーム */
+    public function edit(Job $job)
+    {
+        $companies = class_exists(Company::class)
+            ? Company::query()->orderBy('name')->pluck('name', 'id')
+            : collect();
+
+        return view('admin.jobs.edit', compact('job','companies'));
+    }
+
+    /** 更新処理 */
+    public function update(Request $request, Job $job)
+    {
+        $data = $request->validate($this->rules());
+        // SQLite jobsテーブルのqueue列対策
+        if (\Illuminate\Support\Facades\Schema::hasColumn('recruit_jobs','queue') && empty($data['queue'])) {
+            $data['queue'] = '';
+        }
+
+
+        $data['visa_support']       = $request->boolean('visa_support');
+        $data['relocation_support'] = $request->boolean('relocation_support');
+
+        if (empty($data['slug']) && !empty($data['title'])) {
+            $base = Str::slug($data['title']);
+            $slug = $base ?: Str::random(8);
+            $i = 1;
+            while (Job::where('slug', $slug)->where('id', '!=', $job->id)->exists()) {
+                $slug = $base.'-'.$i++;
+            }
+            $data['slug'] = $slug;
+        }
+
+        if (($data['status'] ?? null) === 'published' && empty($data['published_at'])) {
+            $data['published_at'] = now();
+        }
+
+        $data['salary_currency'] = $data['salary_currency'] ?: 'JPY';
+        $data['salary_unit']     = $data['salary_unit']     ?: 'month';
+
+        $job->update($data);
+
+        return redirect()->route('admin.jobs.index')
+            ->with('status', "求人 #{$job->id} を更新しました");
+    }
+
+    /** 削除 */
+    public function destroy(Job $job)
+    {
+        $job->delete();
+
+        return redirect()->route('admin.jobs.index')
+            ->with('status', "求人を削除しました");
+    }
+
+    /** 追加した項目を含む共通バリデーション */
+    private function rules(): array
+    {
+        return [
+            'title'        => ['required','string','max:255'],
+            'excerpt'      => ['nullable','string'],
+            'slug'         => ['nullable','string','max:255'],
+            'published_at' => ['nullable','date'],
+            'status'       => ['nullable','string','max:50'],
+            'company_id'   => ['nullable','integer'],
+            'image_url'    => ['nullable','string','max:2048'],
+
+            // ▼ 募集情報
+            'location'         => ['nullable','string','max:255'],
+            'employment_type'  => ['nullable','string','max:50', Rule::in(['fulltime','parttime','contract','intern','other'])],
+            'work_style'       => ['nullable','string','max:20',  Rule::in(['onsite','hybrid','remote'])],
+            'openings'         => ['nullable','integer','min:1'],
+
+            // ▼ 給与
+            'salary_min'       => ['nullable','integer','min:0'],
+            'salary_max'       => ['nullable','integer','min:0','gte:salary_min'],
+            'salary_currency'  => ['nullable','string','size:3'],
+            'salary_unit'      => ['nullable','string', Rule::in(['year','month','hour'])],
+            'salary_notes'     => ['nullable','string','max:255'],
+
+            // ▼ スケジュール/条件
+            'application_deadline' => ['nullable','date'],
+            'experience_years_min' => ['nullable','integer','min:0'],
+            'experience_years_max' => ['nullable','integer','min:0'],
+            'education'            => ['nullable','string','max:255'],
+            'languages'            => ['nullable','string','max:255'],
+            'visa_support'         => ['nullable','boolean'],
+            'relocation_support'   => ['nullable','boolean'],
+            'work_hours'           => ['nullable','string','max:255'],
+            'holidays'             => ['nullable','string','max:255'],
+
+            // ▼ 詳細テキスト
+            'selection_process'   => ['nullable','string'],
+            'documents_required'  => ['nullable','string'],
+            'responsibilities'    => ['nullable','string'],
+            'requirements'        => ['nullable','string'],
+            'benefits'            => ['nullable','string'],
+
+            // ▼ 補助情報
+            'tech_stack'          => ['nullable','string'],
+            'tags'                => ['nullable','string','max:255'],
+            'external_link_url'   => ['nullable','string','max:2048'],
+        ];
+    }
+}

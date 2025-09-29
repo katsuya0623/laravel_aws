@@ -10,6 +10,7 @@ use Laravel\Sanctum\HasApiTokens;
 class User extends Authenticatable
 {
     use HasFactory, Notifiable;
+    // use HasApiTokens; // APIトークンが必要ならこちらも
 
     /**
      * まとめて代入可能な属性
@@ -42,5 +43,14 @@ class User extends Authenticatable
     public function profile()
     {
         return $this->hasOne(\App\Models\Profile::class);
+    }
+
+    /**
+     * お気に入り求人（多対多）
+     * pivot: favorites(user_id, job_id, timestamps)
+     */
+    public function favorites()
+    {
+        return $this->belongsToMany(\App\Models\Job::class, 'favorites')->withTimestamps();
     }
 }

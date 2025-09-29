@@ -6,8 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Models\Post;
 use App\Models\Company;
 use App\Models\Job;
+use App\Models\CompanyProfile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 
 class HomeController extends Controller
 {
@@ -27,10 +29,10 @@ class HomeController extends Controller
         // —— 企業（TOP 表示ぶんだけ事前取得）
         $companiesTop = $this->topCompanies();
 
-        // —— 求人（TOP 表示ぶんだけ事前取得：Eloquent 最小列で確実に）
+        // —— 求人（TOP 表示ぶんだけ）
         $jobsTop = Job::withoutGlobalScopes()
-            ->select(['id','title','slug'])   // どの環境でも存在する列だけ
-            ->orderByDesc('id')               // シンプルに id 降順
+            ->select(['id','title','slug'])
+            ->orderByDesc('id')
             ->limit(5)
             ->get();
 
@@ -70,9 +72,12 @@ class HomeController extends Controller
                 });
             }
 
-            // 列
+            // 使いそうな列だけ選択（存在チェック）
             $cols = [];
-            foreach (['id','name','slug','logo_path','location','updated_at','published_at'] as $c) {
+            foreach ([
+                'id','name','slug','logo_path','logo','thumbnail_path',
+                'location','updated_at','published_at'
+            ] as $c) {
                 if ($schema->hasColumn('companies',$c)) $cols[] = $c;
             }
             $q->select($cols ?: ['*']);
@@ -82,9 +87,48 @@ class HomeController extends Controller
             if ($schema->hasColumn('companies','updated_at'))   $q->orderByDesc('updated_at');
             if ($schema->hasColumn('companies','id'))           $q->orderByDesc('id');
 
-            return collect($q->limit(5)->get());
+            // 取得 → ロゴURLと詳細キーを付与
+            return collect($q->limit(5)->get())->map(function ($row) use ($schema) {
+                $arr = (array) $row;
+                $arr['logoUrl'] = $this->resolveLogoUrl($schema, $arr);
+                $arr['showKey'] = $arr['slug'] ?? ($arr['id'] ?? null);
+                return (object) $arr;
+            });
         } catch (\Throwable $e) {
             return collect();
         }
+    }
+
+    /**
+     * ロゴURLを解決
+     * - companies 側: logo_path / logo / thumbnail_path を優先
+     * - 無ければ company_profiles.company_name 突合 → logo_path
+     * - /storage or public 直下も解決、無ければ noimage.svg
+     */
+    private function resolveLogoUrl($schema, array $row): string
+    {
+        $path = null;
+
+        foreach (['logo_path','logo','thumbnail_path'] as $c) {
+            if ($schema->hasColumn('companies', $c) && !empty($row[$c] ?? null)) {
+                $path = $row[$c];
+                break;
+            }
+        }
+
+        if (!$path && !empty($row['name'])) {
+            $profile = CompanyProfile::where('company_name', $row['name'])->first();
+            if ($profile && !empty($profile->logo_path)) {
+                $path = $profile->logo_path;
+            }
+        }
+
+        if ($path) {
+            if (preg_match('#^https?://#', $path)) return $path; // 既にフルURL
+            if (Storage::disk('public')->exists($path)) return Storage::disk('public')->url($path); // /storage/...
+            if (file_exists(public_path($path))) return asset($path); // public直下
+        }
+
+        return asset('images/noimage.svg');
     }
 }

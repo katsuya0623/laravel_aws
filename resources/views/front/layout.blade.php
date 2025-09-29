@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}"> {{-- ★ お気に入りAJAX用 --}}
   <title>@yield('title', 'nibi')</title>
 
   <link rel="preconnect" href="https://fonts.bunny.net">
@@ -124,6 +125,9 @@
   <footer class="site-footer">
     &copy; {{ date('Y') }}
   </footer>
+
+  {{-- ★ コンポーネント（favorite-toggle など）の @push('scripts') をここで出力 --}}
+  @stack('scripts')
 </body>
 </html>
 

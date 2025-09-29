@@ -3,8 +3,38 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Schema;
 
 class Job extends Model
 {
-    protected $table = 'job_posts'; // ← ここが重要
+    use HasFactory;
+
+    protected $table = 'recruit_jobs';
+    protected $guarded = [];
+
+    /** 会社（jobs.company_id → companies.id） */
+    public function company(): BelongsTo
+    {
+        return $this->belongsTo(Company::class, 'company_id', 'id');
+    }
+
+    /** 公開スコープ（カラムがある場合のみ適用） */
+    public function scopePublished($query)
+    {
+        if (Schema::hasColumn($this->getTable(), 'is_published')) {
+            $query->where('is_published', 1);
+        }
+        return $query;
+    }
+
+    /**
+     * お気に入り登録したユーザー（多対多）
+     * pivot: favorites(user_id, job_id, timestamps)
+     */
+    public function favoredBy()
+    {
+        return $this->belongsToMany(\App\Models\User::class, 'favorites')->withTimestamps();
+    }
 }

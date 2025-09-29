@@ -95,7 +95,7 @@
           <span class="{{ $arrow }}">→</span>
         </a>
 
-        <!-- 企業情報（本人用プロフィール拡張） -->
+        <!-- 企業情報 -->
         <a href="{{ route('user.company.edit') }}" class="{{ $btn }}">
           <span class="{{ $iconWrap }}">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M3 21V4a1 1 0 0 1 1-1h7v18H3zM13 21h7V8h-7v13zM6 7h2v2H6V7zm0 4h2v2H6v-2zm0 4h2v2H6v-2zm10-6h2v2h-2V9zm0 4h2v2h-2v-2z"/></svg>
@@ -121,24 +121,21 @@
           <span class="{{ $arrow }}">→</span>
         </a>
 
- <!-- 求人投稿 -->
-<a href="{{ route('admin.jobs.create') }}" class="{{ $btn }}">
-  <span class="{{ $iconWrap }}">
-    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M10 3h4a2 2 0 0 1 2 2v1h3a2 2 0 0 1 2 2v4H3V8a2 2 0 0 1 2-2h3V5a2 2 0 0 1 2-2zm2 2h-2v1h6V5h-4z"/>
-      <path d="M3 13h18v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5z"/>
-      <path d="M12 9a.75.75 0 0 1 .75.75V11h1.25a.75.75 0 0 1 0 1.5H12.75v1.25a.75.75 0 1 1-1.5 0V12.5H10a.75.75 0 0 1 0-1.5h1.25V9.75A.75.75 0 0 1 12 9z"/>
-    </svg>
-  </span>
-  <span>
-    <div class="{{ $title }}">求人投稿</div>
-    <div class="{{ $desc }}">新しい求人を作成する</div>
-  </span>
-  <span class="{{ $arrow }}">→</span>
-</a>
-
-
-
+        <!-- 求人投稿 -->
+        <a href="{{ route('admin.jobs.create') }}" class="{{ $btn }}">
+          <span class="{{ $iconWrap }}">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M10 3h4a2 2 0 0 1 2 2v1h3a2 2 0 0 1 2 2v4H3V8a2 2 0 0 1 2-2h3V5a2 2 0 0 1 2-2zm2 2h-2v1h6V5h-4z"/>
+              <path d="M3 13h18v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5z"/>
+              <path d="M12 9a.75.75 0 0 1 .75.75V11h1.25a.75.75 0 0 1 0 1.5H12.75v1.25a.75.75 0 1 1-1.5 0V12.5H10a.75.75 0 0 1 0-1.5h1.25V9.75A.75.75 0 0 1 12 9z"/>
+            </svg>
+          </span>
+          <span>
+            <div class="{{ $title }}">求人投稿</div>
+            <div class="{{ $desc }}">新しい求人を作成する</div>
+          </span>
+          <span class="{{ $arrow }}">→</span>
+        </a>
 
         <!-- 求人一覧（管理） -->
         <a href="{{ route('admin.jobs.index') }}" class="{{ $btn }}">
@@ -150,6 +147,95 @@
           <span>
             <div class="{{ $title }}">求人一覧（管理）</div>
             <div class="{{ $desc }}">掲載中の求人を管理</div>
+          </span>
+          <span class="{{ $arrow }}">→</span>
+        </a>
+
+        <!-- 応募履歴 -->
+        <a href="{{ route('mypage.applications.index') }}" class="{{ $btn }}">
+          <span class="{{ $iconWrap }}">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                    d="M3.75 5.25h16.5m-16.5 4.5h16.5m-16.5 4.5h9.75M3 6v12a2.25 2.25 0 002.25 2.25h13.5A2.25 2.25 0 0021 18V6" />
+            </svg>
+          </span>
+          <span>
+            <div class="{{ $title }}">応募履歴</div>
+            <div class="{{ $desc }}">あなたの応募状況を確認</div>
+          </span>
+          <span class="{{ $arrow }}">→</span>
+        </a>
+
+        <!-- ★ お気に入り -->
+        <a href="{{ route('mypage.favorites.index') }}" class="{{ $btn }}">
+          <span class="{{ $iconWrap }}">
+            <span class="text-lg">★</span>
+          </span>
+          <span class="min-w-0">
+            <div class="flex items-center gap-2">
+              <div class="{{ $title }}">お気に入り</div>
+              @auth
+                @php($favCount = auth()->user()->favorites()->count())
+                <span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                  {{ $favCount }}
+                </span>
+              @endauth
+            </div>
+            <div class="{{ $desc }}">求人のお気に入り一覧を表示</div>
+          </span>
+          <span class="{{ $arrow }}">→</span>
+        </a>
+
+        <!-- 応募者一覧（企業） -->
+        <a href="{{ route('users.applicants.index') }}" class="{{ $btn }}">
+          <span class="{{ $iconWrap }}">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                    d="M3 7.5A2.5 2.5 0 0 1 5.5 5h13A2.5 2.5 0 0 1 21 7.5V15a4 4 0 0 1-4 4h-2.382a2 2 0 0 1-1.447-.618l-1.342-1.414a2 2 0 0 0-1.447-.618H7a4 4 0 0 1-4-4V7.5z" />
+            </svg>
+          </span>
+          <span class="min-w-0">
+            <div class="flex items-center gap-2">
+              <div class="{{ $title }}">応募者一覧（企業）</div>
+              @auth
+                <span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                  {{ $pendingApplicantsCount ?? 0 }}
+                </span>
+              @endauth
+            </div>
+            <div class="{{ $desc }}">自社求人への応募を一覧表示</div>
+          </span>
+          <span class="{{ $arrow }}">→</span>
+        </a>
+
+        <!-- 応募一覧（管理） -->
+        <a href="{{ route('admin.applications.index') }}" class="{{ $btn }}">
+          <span class="{{ $iconWrap }}">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                    d="M9 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H9l-4-4V5a2 2 0 0 1 2-2h2z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 8h6M9 12h6M9 16h6"/>
+            </svg>
+          </span>
+          <span>
+            <div class="{{ $title }}">応募一覧（管理）</div>
+            <div class="{{ $desc }}">全求人の応募を横断表示</div>
+          </span>
+          <span class="{{ $arrow }}">→</span>
+        </a>
+
+        <!-- ★ 追加：スポンサー記事一覧 -->
+        <a href="{{ route('users.sponsored_articles.index') }}" class="{{ $btn }}">
+          <span class="{{ $iconWrap }}">
+            <!-- リボン風アイコン -->
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2a5 5 0 1 1 0 10 5 5 0 0 1 0-10z"/>
+              <path d="M7 13l5 3 5-3v7l-5-3-5 3v-7z"/>
+            </svg>
+          </span>
+          <span>
+            <div class="{{ $title }}">スポンサー記事一覧</div>
+            <div class="{{ $desc }}">is_sponsored=1 の記事を表示</div>
           </span>
           <span class="{{ $arrow }}">→</span>
         </a>

@@ -17,7 +17,6 @@
 
         @php
           $is  = fn($p) => request()->is(ltrim($p,'/'));
-          // PCタブの見た目
           $tab = 'inline-flex items-center px-2.5 py-1.5 rounded-md text-sm font-medium
                   text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition';
           $on  = 'text-indigo-700 bg-indigo-50 ring-1 ring-indigo-200';
@@ -32,7 +31,7 @@
 
           <span class="h-4 w-px bg-gray-200 mx-0.5"></span>
 
-          {{-- 管理用タブ（存在しないルートはURLにフォールバック） --}}
+          {{-- 管理用タブ --}}
           <a href="{{ url('/posts') }}"
              class="{{ $tab }} {{ $is('posts*') ? $on : '' }}">投稿一覧（フロント）</a>
 
@@ -48,11 +47,9 @@
           <a href="{{ $rurl('admin.users.create','/admin/users/create') }}"
              class="{{ $tab }} {{ $is('admin/users/create') ? $on : '' }}">ユーザー追加</a>
 
-          {{-- Breeze標準に合わせて profile.edit を優先、無ければ /profile --}}
           <a href="{{ $rurl('profile.edit','/profile') }}"
              class="{{ $tab }} {{ $is('profile*') ? $on : '' }}">プロフィール</a>
 
-          {{-- 企業情報（ユーザー用）: user.company.edit が無ければ /company に --}}
           <a href="{{ \Illuminate\Support\Facades\Route::has('user.company.edit') ? route('user.company.edit') : url('/company') }}"
              class="{{ $tab }} {{ $is('company*') ? $on : '' }}">企業情報</a>
 
@@ -64,6 +61,12 @@
 
           <a href="{{ $rurl('admin.jobs.index','/admin/jobs') }}"
              class="{{ $tab }} {{ $is('admin/jobs*') ? $on : '' }}">求人一覧（管理）</a>
+
+          {{-- 応募履歴（← フロントへ の直前に移動） --}}
+          <a href="{{ $rurl('mypage.applications.index','/mypage/applications') }}"
+             class="{{ $tab }} {{ request()->routeIs('mypage.applications.*') ? $on : '' }}">
+            応募履歴
+          </a>
 
           <span class="h-4 w-px bg-gray-200 mx-0.5"></span>
 
@@ -145,7 +148,12 @@
       <a href="{{ $rurl('admin.companies.index','/admin/companies') }}" class="{{ $r }} {{ $is('admin/companies*') ? $on : '' }}">企業一覧（管理）</a>
       <a href="{{ $rurl('admin.jobs.create','/admin/jobs/create') }}" class="{{ $r }} {{ $is('admin/jobs/create') ? $on : '' }}">求人投稿</a>
       <a href="{{ $rurl('admin.jobs.index','/admin/jobs') }}"        class="{{ $r }} {{ $is('admin/jobs*') ? $on : '' }}">求人一覧（管理）</a>
-      <a href="{{ url('/posts') }}"                                   class="{{ $r }}">← フロントへ</a>
+
+      {{-- 応募履歴（← フロントへ の直前に移動） --}}
+      <a href="{{ $rurl('mypage.applications.index','/mypage/applications') }}"
+         class="{{ $r }} {{ request()->routeIs('mypage.applications.*') ? $on : '' }}">応募履歴</a>
+
+      <a href="{{ url('/posts') }}" class="{{ $r }}">← フロントへ</a>
     </div>
 
     <!-- Responsive Settings Options -->

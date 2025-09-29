@@ -63,7 +63,7 @@ Route::prefix('company')->group(function () {
 
 // ▼ 公開側 求人 (/jobs, /jobs/{slug or id})
 use App\Http\Controllers\Front\ApplicationController;
-Route::prefix('jobs')->group(function () {
+Route::prefix('recruit_jobs')->group(function () {
     // 応募: /jobs/{job:slug}/apply（先に定義して /{slugOrId} と競合しないように）
     Route::post('/{job:slug}/apply', [ApplicationController::class, 'store'])->name('front.jobs.apply');
 
@@ -101,7 +101,7 @@ Route::prefix('admin')->middleware(['auth'])->name('admin.')->group(function () 
 
     // 追加: 企業と求人の管理 CRUD
     Route::resource('companies', AdminCompanyController::class);
-    Route::resource('jobs', AdminJobController::class);
+    Route::resource('recruit_jobs', AdminJobController::class);
 });
 
 // --- プロフィール（Breeze がある場合のみ）
