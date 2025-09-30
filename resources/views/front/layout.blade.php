@@ -102,10 +102,24 @@
                style="height:28px;width:auto" />
         </a>
       </div>
+
+      {{-- ルート存在チェック付きナビ --}}
       <nav class="nav">
-        <a href="{{ route('front.posts.index') }}">記事一覧</a>
-        <a href="{{ route('front.company.index') }}">企業</a>
-        <a href="{{ route('front.jobs.index') }}">求人</a>
+        @php
+          $urlPosts   = Route::has('front.posts.index')   ? route('front.posts.index')   : null;
+          $urlCompany = Route::has('front.company.index') ? route('front.company.index') : null;
+          $urlJobs    = Route::has('front.jobs.index')    ? route('front.jobs.index')    : null;
+        @endphp
+
+        @if ($urlPosts)
+          <a href="{{ $urlPosts }}">記事一覧</a>
+        @endif
+        @if ($urlCompany)
+          <a href="{{ $urlCompany }}">企業</a>
+        @endif
+        @if ($urlJobs)
+          <a href="{{ $urlJobs }}">求人</a>
+        @endif
       </nav>
     </div>
   </header>
@@ -131,4 +145,4 @@
 </body>
 </html>
 
-<!-- LAYOUTMARK Fri Sep 19 06:31:45 AM UTC 2025 -->
+<!-- LAYOUTMARK -->

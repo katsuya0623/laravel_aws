@@ -40,7 +40,6 @@ use App\Http\Middleware\EnsureUserRole;
 
 // ===== Front base =====
 // TOPは / に統一（以前 /blog だった内容を表示）
-Route::get('/', [LandingController::class, 'index'])->name('home');
 // 旧 /blog へのアクセスは TOP に301リダイレクトして集約（SEO/ブクマ対策）
 Route::permanentRedirect('/blog', '/');
 
@@ -61,20 +60,9 @@ Route::permanentRedirect('/jobs/jobs',       '/jobs');
 Route::permanentRedirect('/companys',        '/company');
 Route::permanentRedirect('/companies',       '/company');
 
-// ★追加: 旧 /jobs/{slugOrId} → 新 /recruit_jobs/{slugOrId} へ301（個別詳細の互換）
-Route::permanentRedirect('/jobs/{slugOrId}', '/recruit_jobs/{slugOrId}')
-    ->where('slugOrId', '^([A-Za-z0-9\-]+|\d+)$');
-
-// 追加：旧 /jobs 一覧を新URLへ
-Route::permanentRedirect('/jobs',            '/recruit_jobs');
-
 // ===== Front: Company (list/detail) =====
 Route::prefix('company')->name('front.company.')->group(function () {
-    Route::get('/', [FCompanyController::class, 'index'])->name('index');
-    // slug でも id でも OK
-    Route::get('/{slugOrId}', [FCompanyController::class, 'show'])
-        ->where('slugOrId', '^([A-Za-z0-9\-]+|\d+)$')
-        ->name('show');
+    Route::get('/{company}', [FCompanyController::class, 'show'])->name('show'); // {company:slug} でもOK
 });
 
 // ===== Front: Jobs (list/detail/apply) =====
@@ -83,8 +71,6 @@ Route::prefix('recruit_jobs')->group(function () {
     Route::post('/{job:slug}/apply', [ApplicationController::class, 'store'])
         ->middleware(['auth', EnsureUserRole::class . ':enduser'])
         ->name('front.jobs.apply');
-
-    Route::get('/', [FrontJobController::class, 'index'])->name('front.jobs.index');
 
     Route::get('/{slugOrId}', [FrontJobController::class, 'show'])
         ->where('slugOrId', '^([A-Za-z0-9\-]+|\d+)$')
@@ -189,11 +175,6 @@ if (file_exists(__DIR__.'/auth.php')) {
     require __DIR__.'/auth.php';
 }
 
-// ===== Admin auth routes include（★追加：/admin/login をここで読み込む） =====
-if (file_exists(__DIR__.'/admin.php')) {
-    require __DIR__.'/admin.php';
-}
-
 // ===== Front public include =====
 if (file_exists(__DIR__.'/front_public.php')) {
     require __DIR__.'/front_public.php';
@@ -251,7 +232,6 @@ Route::post('/__preupload', function (Request $r) {
 })->middleware(['auth'])->name('preupload');
 
 // ==== Root: 無名リダイレクト（重複回避）====
-// ※ 以前の  Route::permanentRedirect('/', '/blog');  は削除しました
 
 // テスト: 管理者のみOK（クラス直指定）
 Route::get('/__role-test', fn() => 'ok')->middleware(['auth', EnsureUserRole::class . ':admin']);
