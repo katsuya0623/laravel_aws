@@ -10,16 +10,24 @@
               return \Illuminate\Support\Facades\Route::has($name) ? route($name) : url($fallback);
             };
           @endphp
-          <a href="{{ $rurl('dashboard','/') }}" class="inline-flex items-center">
+          <a href="{{ $rurl('dashboard','/dashboard') }}" class="inline-flex items-center">
             <x-application-logo class="block" />
           </a>
         </div>
 
         @php
           $is  = fn($p) => request()->is(ltrim($p,'/'));
-          $tab = 'inline-flex items-center px-2.5 py-1.5 rounded-md text-sm font-medium
-                  text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition';
+          $tab = 'inline-flex items-center px-2.5 py-1.5 rounded-md text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition';
           $on  = 'text-indigo-700 bg-indigo-50 ring-1 ring-indigo-200';
+
+          /* ===== 求人一覧リンクの切替（web優先 → admin） ===== */
+          $webUser = auth('web')->user();
+          $isFront = $webUser && in_array($webUser->role ?? 'enduser', ['enduser','company'], true);
+          $isAdmin = !$isFront && auth('admin')->check();
+
+          $jobsIndex  = $isAdmin ? $rurl('admin.jobs.index','/admin/recruit_jobs')
+                                 : $rurl('front.jobs.index','/recruit_jobs');
+          $jobsActive = $is('admin/recruit_jobs*') || $is('recruit_jobs*') || request()->routeIs('front.jobs.*');
         @endphp
 
         <!-- Dashboard と同じ列に整列（PC） -->
@@ -56,17 +64,15 @@
           <a href="{{ $rurl('admin.companies.index','/admin/companies') }}"
              class="{{ $tab }} {{ $is('admin/companies*') ? $on : '' }}">企業一覧（管理）</a>
 
-          <a href="{{ $rurl('admin.jobs.create','/admin/jobs/create') }}"
-             class="{{ $tab }} {{ $is('admin/jobs/create') ? $on : '' }}">求人投稿</a>
+          <a href="{{ $rurl('admin.jobs.create','/admin/recruit_jobs/create') }}"
+             class="{{ $tab }} {{ $is('admin/recruit_jobs/create') ? $on : '' }}">求人投稿</a>
 
-          <a href="{{ $rurl('admin.jobs.index','/admin/jobs') }}"
-             class="{{ $tab }} {{ $is('admin/jobs*') ? $on : '' }}">求人一覧（管理）</a>
+          {{-- ▼ 求人一覧（ロールに応じてURL切替／アクティブ判定両対応） --}}
+          <a href="{{ $jobsIndex }}" class="{{ $tab }} {{ $jobsActive ? $on : '' }}">求人一覧</a>
 
           {{-- 応募履歴（← フロントへ の直前に移動） --}}
           <a href="{{ $rurl('mypage.applications.index','/mypage/applications') }}"
-             class="{{ $tab }} {{ request()->routeIs('mypage.applications.*') ? $on : '' }}">
-            応募履歴
-          </a>
+             class="{{ $tab }} {{ request()->routeIs('mypage.applications.*') ? $on : '' }}">応募履歴</a>
 
           <span class="h-4 w-px bg-gray-200 mx-0.5"></span>
 
@@ -133,9 +139,19 @@
     </div>
 
     @php
-      $r = 'block w-full text-left px-4 py-2 text-sm hover:bg-gray-100';
+      $r  = 'block w-full text-left px-4 py-2 text-sm hover:bg-gray-100';
       $on = 'bg-indigo-50 text-indigo-700';
+
+      /* SP も同じ切替ロジック（web優先 → admin） */
+      $webUser = auth('web')->user();
+      $isFront = $webUser && in_array($webUser->role ?? 'enduser', ['enduser','company'], true);
+      $isAdmin = !$isFront && auth('admin')->check();
+
+      $jobsIndex  = $isAdmin ? $rurl('admin.jobs.index','/admin/recruit_jobs')
+                             : $rurl('front.jobs.index','/recruit_jobs');
+      $jobsActive = $is('admin/recruit_jobs*') || $is('recruit_jobs*') || request()->routeIs('front.jobs.*');
     @endphp
+
     <div class="pt-2 pb-3 border-t border-gray-200">
       <a href="{{ url('/posts') }}"                                  class="{{ $r }} {{ $is('posts*') ? $on : '' }}">投稿一覧（フロント）</a>
       <a href="{{ $rurl('admin.posts.index','/admin/posts') }}"      class="{{ $r }} {{ $is('admin/posts*') ? $on : '' }}">投稿一覧（バック）</a>
@@ -146,8 +162,10 @@
       <a href="{{ \Illuminate\Support\Facades\Route::has('user.company.edit') ? route('user.company.edit') : url('/company') }}"
                                                                     class="{{ $r }} {{ $is('company*') ? $on : '' }}">企業情報</a>
       <a href="{{ $rurl('admin.companies.index','/admin/companies') }}" class="{{ $r }} {{ $is('admin/companies*') ? $on : '' }}">企業一覧（管理）</a>
-      <a href="{{ $rurl('admin.jobs.create','/admin/jobs/create') }}" class="{{ $r }} {{ $is('admin/jobs/create') ? $on : '' }}">求人投稿</a>
-      <a href="{{ $rurl('admin.jobs.index','/admin/jobs') }}"        class="{{ $r }} {{ $is('admin/jobs*') ? $on : '' }}">求人一覧（管理）</a>
+      <a href="{{ $rurl('admin.jobs.create','/admin/recruit_jobs/create') }}" class="{{ $r }} {{ $is('admin/recruit_jobs/create') ? $on : '' }}">求人投稿</a>
+
+      {{-- ▼ 求人一覧（ロールに応じてURL切替） --}}
+      <a href="{{ $jobsIndex }}" class="{{ $r }} {{ $jobsActive ? $on : '' }}">求人一覧</a>
 
       {{-- 応募履歴（← フロントへ の直前に移動） --}}
       <a href="{{ $rurl('mypage.applications.index','/mypage/applications') }}"

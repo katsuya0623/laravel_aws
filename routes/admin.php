@@ -13,6 +13,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::post('/logout', [AdminLogin::class, 'logout'])->name('logout');
 
     Route::middleware(['auth:admin'])->group(function () {
-        Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+        // ★ ここを __invoke 用に変更（メソッド指定なし）
+        Route::get('/dashboard', DashboardController::class)->name('dashboard');
     });
 });

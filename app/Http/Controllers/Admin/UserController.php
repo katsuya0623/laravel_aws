@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\CompanyProfile;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Hash;
@@ -13,17 +14,29 @@ class UserController extends Controller
     public function index(Request $request)
     {
         $q = $request->input('q');
-        $users = User::when($q, fn($query)=>
-            $query->where('name','like',"%$q%")
-                  ->orWhere('email','like',"%$q%")
-        )->orderByDesc('id')->paginate(20)->withQueryString();
 
-        return view('admin.users.index', compact('users','q'));
+        $users = User::with('companyProfiles')
+            ->when($q, function ($query) use ($q) {
+                $query->where(function ($qq) use ($q) {
+                    $qq->where('name', 'like', "%{$q}%")
+                       ->orWhere('email', 'like', "%{$q}%");
+                });
+            })
+            ->orderByDesc('id')
+            ->paginate(20)
+            ->withQueryString();
+
+        // 行内の「会社割当」用セレクトに使用
+        $companies = CompanyProfile::orderBy('company_name')->get(['id','company_name']);
+
+        return view('admin.users.index', compact('users','q','companies'));
     }
 
     public function create()
     {
-        return view('admin.users.create', ['user' => new User()]);
+        // 作成画面の「初回会社割当」セレクト用
+        $companies = CompanyProfile::orderBy('company_name')->get(['id','company_name']);
+        return view('admin.users.create', ['user' => new User(), 'companies' => $companies]);
     }
 
     public function store(Request $request)
@@ -34,15 +47,50 @@ class UserController extends Controller
             'password' => ['nullable','string','min:8'],
             'is_admin'  => ['nullable','boolean'],
             'is_active' => ['nullable','boolean'],
+
+            // 追加：役割 & 初回会社割当
+            'role'               => ['nullable', Rule::in(['enduser','company'])],
+            'company_profile_id' => ['nullable','integer', Rule::exists('company_profiles','id')],
+            'set_primary'        => ['nullable','boolean'],
         ]);
 
         $user = new User();
-        $user->name  = $data['name'];
-        $user->email = $data['email'];
-        $user->password = Hash::make($data['password'] ?? str()->random(16));
+        $user->name      = $data['name'];
+        $user->email     = $data['email'];
+        $user->password  = Hash::make($data['password'] ?? str()->random(16));
         $user->is_admin  = (bool)($data['is_admin'] ?? false);
         $user->is_active = (bool)($data['is_active'] ?? true);
+
+        // 追加：role（カラムがある前提）
+        $user->role = $data['role'] ?? 'enduser';
+
         $user->save();
+
+        // 追加：初回会社割当（任意）
+        if (!empty($data['company_profile_id'])) {
+            $company = CompanyProfile::find($data['company_profile_id']);
+            if ($company) {
+                // 会社割当するなら、roleをcompanyに揃える（念のため）
+                if (($user->role ?? 'enduser') !== 'company') {
+                    $user->role = 'company';
+                    $user->save();
+                }
+                $company->users()->syncWithoutDetaching([$user->id]);
+
+                if (!empty($data['set_primary'])) {
+                    // 代表に設定（互換：company_profiles.user_id へミラー）
+                    if (method_exists($company, 'setPrimaryUser')) {
+                        $company->setPrimaryUser($user);
+                    } else {
+                        // 互換メソッドが無い場合は直接代入（あれば）
+                        if (\Schema::hasColumn('company_profiles', 'user_id')) {
+                            $company->user_id = $user->id;
+                            $company->save();
+                        }
+                    }
+                }
+            }
+        }
 
         return redirect()->route('admin.users.edit', $user)->with('status','作成しました');
     }
@@ -60,6 +108,7 @@ class UserController extends Controller
             'password' => ['nullable','string','min:8'],
             'is_admin'  => ['required','boolean'],
             'is_active' => ['required','boolean'],
+            // （必要なら role もここで更新可だが、行内操作に任せるなら省略）
         ]);
 
         if (!empty($data['password'])) {

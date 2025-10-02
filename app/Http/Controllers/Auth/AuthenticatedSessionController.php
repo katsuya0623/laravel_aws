@@ -9,6 +9,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 
+// ★ 追加
+use App\Models\User;
+use Illuminate\Validation\ValidationException;
+
 class AuthenticatedSessionController extends Controller
 {
     /**
@@ -21,11 +25,24 @@ class AuthenticatedSessionController extends Controller
 
     /**
      * Handle an incoming authentication request.
+     *
+     * ポイント：
+     * - 認証実行前に「admin を一般ログインから拒否」
+     * - メッセージは一般化（ユーザー名/権限の有無を推測させない）
      */
     public function store(LoginRequest $request): RedirectResponse
     {
-        $request->authenticate();
+        // ▼ 認証前チェック（セッション未発行で終了）
+        if ($user = User::where('email', $request->input('email'))->first()) {
+            if (($user->role ?? null) === 'admin') {
+                throw ValidationException::withMessages([
+                    'email' => 'メールアドレスまたはパスワードが違います。', // 列挙対策で一般化
+                ]);
+            }
+        }
 
+        // ▼ 既存どおり Breeze の認証を実行（webガード）
+        $request->authenticate();
         $request->session()->regenerate();
 
         return redirect()->intended(route('dashboard', absolute: false));
@@ -39,7 +56,6 @@ class AuthenticatedSessionController extends Controller
         Auth::guard('web')->logout();
 
         $request->session()->invalidate();
-
         $request->session()->regenerateToken();
 
         return redirect('/');
