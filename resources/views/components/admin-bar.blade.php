@@ -9,7 +9,7 @@
   <a href="{{ url('/') }}" style="color:#9ae6b4; text-decoration:none; font-weight:700;">SITE</a>
   <span style="opacity:.6;">|</span>
 
-  <a href="{{ route('dashboard') }}" style="color:#fff; text-decoration:none;">ダッシュボード</a>
+  <a href="{{ route('admin.dashboard') }}" style="color:#fff; text-decoration:none;">ダッシュボード</a>
   <a href="{{ route('admin.posts.index') }}" style="color:#fff; text-decoration:none;">投稿一覧</a>
   <a href="{{ route('admin.posts.create') }}" style="color:#fff; text-decoration:none;">＋新規投稿</a>
   <a href="{{ route('front.posts.index') }}" style="color:#fff; text-decoration:none;">フロント記事一覧</a>

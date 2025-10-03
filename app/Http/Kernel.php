@@ -6,10 +6,41 @@ use Illuminate\Foundation\Http\Kernel as HttpKernel;
 
 class Kernel extends HttpKernel
 {
-    // 既存の $middleware / $middlewareGroups はそのままでOK
+    /**
+     * グローバルミドルウェア（全リクエストに適用）
+     */
+    protected $middleware = [
+        // \App\Http\Middleware\TrustHosts::class,
+        \App\Http\Middleware\TrustProxies::class,
+        \Illuminate\Http\Middleware\HandleCors::class,
+        \App\Http\Middleware\PreventRequestsDuringMaintenance::class,
+        \Illuminate\Foundation\Http\Middleware\ValidatePostSize::class,
+        \App\Http\Middleware\TrimStrings::class,
+        \Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull::class,
+    ];
 
     /**
-     * Laravel 12 で参照されるエイリアス定義
+     * ミドルウェアグループ（web / api）
+     */
+    protected $middlewareGroups = [
+        'web' => [
+            \App\Http\Middleware\EncryptCookies::class,
+            \Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
+            \Illuminate\Session\Middleware\StartSession::class,
+            // \Illuminate\Session\Middleware\AuthenticateSession::class, // 必要なら有効化
+            \Illuminate\View\Middleware\ShareErrorsFromSession::class,
+            \App\Http\Middleware\VerifyCsrfToken::class,
+            \Illuminate\Routing\Middleware\SubstituteBindings::class,
+        ],
+
+        'api' => [
+            // \Illuminate\Routing\Middleware\ThrottleRequests::class.':api',
+            \Illuminate\Routing\Middleware\SubstituteBindings::class,
+        ],
+    ];
+
+    /**
+     * Laravel 11/12 で推奨のエイリアス定義
      */
     protected $middlewareAliases = [
         'auth'             => \App\Http\Middleware\Authenticate::class,
@@ -18,17 +49,17 @@ class Kernel extends HttpKernel
         'can'              => \Illuminate\Auth\Middleware\Authorize::class,
         'guest'            => \App\Http\Middleware\RedirectIfAuthenticated::class,
         'password.confirm' => \Illuminate\Auth\Middleware\RequirePassword::class,
-        // ★ 修正ポイント：App\... ではなく Illuminate\Routing\... を使う
         'signed'           => \Illuminate\Routing\Middleware\ValidateSignature::class,
         'throttle'         => \Illuminate\Routing\Middleware\ThrottleRequests::class,
         'verified'         => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
 
-        // EnsureUserRole のエイリアス
+        // ★ 役割チェック（EnsureUserRole）
         'role'             => \App\Http\Middleware\EnsureUserRole::class,
     ];
 
     /**
-     * 互換のための旧プロパティ（併存OK）
+     * 互換用（古い書き方が残っていても動くように）
+     * ※ Laravel 11+ なら省略可。残しても支障なし。
      */
     protected $routeMiddleware = [
         'auth'             => \App\Http\Middleware\Authenticate::class,
@@ -37,7 +68,6 @@ class Kernel extends HttpKernel
         'can'              => \Illuminate\Auth\Middleware\Authorize::class,
         'guest'            => \App\Http\Middleware\RedirectIfAuthenticated::class,
         'password.confirm' => \Illuminate\Auth\Middleware\RequirePassword::class,
-        // ★ 同じく修正
         'signed'           => \Illuminate\Routing\Middleware\ValidateSignature::class,
         'throttle'         => \Illuminate\Routing\Middleware\ThrottleRequests::class,
         'verified'         => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,

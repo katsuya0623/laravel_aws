@@ -7,7 +7,11 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 // use Laravel\Sanctum\HasApiTokens; // APIトークンが必要なら有効化
 
-class User extends Authenticatable
+// ★ Filament 用
+use Filament\Models\Contracts\FilamentUser;
+use Filament\Panel;
+
+class User extends Authenticatable implements FilamentUser
 {
     use HasFactory, Notifiable;
     // use HasApiTokens;
@@ -37,7 +41,8 @@ class User extends Authenticatable
      */
     protected $casts = [
         'email_verified_at' => 'datetime',
-        'password'          => 'hashed',
+        'password'          => 'hashed', // ← 保存時に自動でハッシュ
+        // 'is_active' => 'boolean',     // users に列があれば有効化
     ];
 
     /* ========================
@@ -83,4 +88,13 @@ class User extends Authenticatable
     public function scopeEndusers($q) { return $q->where(function($qq){
         $qq->whereNull('role')->orWhere('role','enduser');
     }); }
+
+    /* ========================
+       Filament パネル入場制御
+       ======================== */
+    public function canAccessPanel(Panel $panel): bool
+    {
+        // /admin パネルには admin のみ入場許可
+        return $panel->getId() === 'admin' && $this->isAdmin();
+    }
 }
