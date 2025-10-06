@@ -62,6 +62,7 @@
             <ul class="flex items-center gap-1 min-w-max">
               {{-- 管理者メニュー --}}
               @if($isAdmin)
+               <li><a href="{{ route('admin.posts.create') }}"        class="{{ $link }} {{ $is('admin/posts/create') ? $active : '' }}">記事作成</a></li>
                 <li><a href="{{ route('admin.posts.index') }}"        class="{{ $link }} {{ $is('admin/posts*') ? $active : '' }}">記事一覧</a></li>
                 <li><a href="{{ route('admin.users.index') }}"        class="{{ $link }} {{ $is('admin/users*') ? $active : '' }}">ユーザー管理</a></li>
                 <li><a href="{{ route('admin.companies.index') }}"    class="{{ $link }} {{ $is('admin/companies*') ? $active : '' }}">企業一覧</a></li>

@@ -15,8 +15,9 @@
   <div style="margin:10px 0 20px; display:flex; gap:8px; flex-wrap:wrap;">
     <a href="{{ route('admin.posts.create') }}"
        style="display:inline-block; padding:6px 10px; border:1px solid #999; border-radius:6px; text-decoration:none;">＋ 新規作成</a>
-    <a href="{{ url('/dashboard') }}"
+    <a href="{{ url('/admin/dashboard') }}"
        style="display:inline-block; padding:6px 10px; border:1px solid #999; border-radius:6px; text-decoration:none;">ダッシュボード</a>
+    {{-- もし名前付きルートがあるなら: href="{{ route('admin.dashboard') }}" --}}
   </div>
 
   {{-- ▼ 検索・絞り込みフォーム（カテゴリ＋キーワード＋おすすめ＋公開状態＋日付） --}}

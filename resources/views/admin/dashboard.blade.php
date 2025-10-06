@@ -17,6 +17,25 @@
     @if($isAdmin)
       <div class="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
 
+        {{-- 🔥 記事作成（追加） --}}
+        <a href="{{ url('/admin/posts/create') }}"
+           class="group rounded-2xl border border-gray-200 bg-white p-6 shadow-sm hover:-translate-y-0.5 hover:shadow-md hover:border-indigo-200 hover:bg-indigo-50/40 transition">
+          <div class="flex items-start gap-4">
+            <div class="h-12 w-12 grid place-items-center rounded-xl bg-indigo-100 text-indigo-600">
+              ✍️
+            </div>
+            <div class="min-w-0">
+              <h3 class="font-semibold">記事作成</h3>
+              <p class="text-sm text-gray-500">新しい記事を作成・公開</p>
+            </div>
+          </div>
+          <div class="mt-3 text-right text-xs text-gray-400">→</div>
+        </a>
+
+
+
+
+
         {{-- 記事一覧（フロント/バックを統合して「投稿」管理へ） --}}
         <a href="{{ route('admin.posts.index') }}"
            class="group rounded-2xl border border-gray-200 bg-white p-6 shadow-sm hover:-translate-y-0.5 hover:shadow-md hover:border-indigo-200 hover:bg-indigo-50/40 transition">

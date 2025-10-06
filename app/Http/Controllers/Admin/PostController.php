@@ -221,11 +221,7 @@ class PostController extends Controller
 
     /**
      * アップロード処理＋DB反映（強力フォールバック）
-     * 1) preuploaded を採用
-     * 2) putFile()
-     * 3) move() で絶対パスへ移動
-     * 4) 手動streamコピー(Storage::put)
-     * 5) 成功時のみ旧画像削除＆DB更新
+     * 保存先は public ディスク配下の posts/ に統一
      */
     private function handleUploadAndPersist(Request $request, Post $post): void
     {
@@ -279,8 +275,8 @@ class PostController extends Controller
             ]);
         }
 
-        // 保存先確保
-        Storage::disk('public')->makeDirectory('thumbnails');
+        // 保存先確保（posts）
+        Storage::disk('public')->makeDirectory('posts');
 
         // tmp の実在確認（デバッグ用）
         $tmp = method_exists($f, 'getPathname') ? $f->getPathname() : null;
@@ -296,9 +292,9 @@ class PostController extends Controller
 
         $path = false;
 
-        // 1) putFile
+        // 1) putFile（public/posts）
         try {
-            $path = Storage::disk('public')->putFile('thumbnails', $f);
+            $path = Storage::disk('public')->putFile('posts', $f);
             Log::debug('thumb putFile result', [
                 'path'   => $path,
                 'exists' => $path ? Storage::disk('public')->exists($path) : null,
@@ -308,11 +304,11 @@ class PostController extends Controller
             $path = false;
         }
 
-        // 2) move() で絶対パスへ移動（rename/move_uploaded_file）
+        // 2) move() フォールバック（絶対パスへ）
         if (!$path) {
             try {
                 $ext = strtolower($f->getClientOriginalExtension() ?: ($f->extension() ?: ($f->guessExtension() ?: 'bin')));
-                $destRel = 'thumbnails/'.Str::uuid()->toString().'.'.$ext;
+                $destRel = 'posts/'.Str::uuid()->toString().'.'.$ext;
                 $destAbs = storage_path('app/public/'.$destRel);
 
                 if (!is_dir(dirname($destAbs))) {
@@ -338,7 +334,7 @@ class PostController extends Controller
         if (!$path) {
             try {
                 $ext = strtolower($f->getClientOriginalExtension() ?: ($f->extension() ?: ($f->guessExtension() ?: 'bin')));
-                $dest = 'thumbnails/'.Str::uuid()->toString().'.'.$ext;
+                $dest = 'posts/'.Str::uuid()->toString().'.'.$ext;
                 $streamPath = method_exists($f, 'getRealPath') ? $f->getRealPath() : $f->getPathname();
                 $ok = false;
                 if ($streamPath && is_readable($streamPath)) {
