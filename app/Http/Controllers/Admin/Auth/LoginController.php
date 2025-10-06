@@ -5,8 +5,7 @@ namespace App\Http\Controllers\Admin\Auth;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
-use App\Models\User;
+use App\Models\Admin; // ← ここがポイント
 
 class LoginController extends Controller
 {
@@ -17,28 +16,26 @@ class LoginController extends Controller
 
     public function login(Request $request)
     {
-        $data = $request->validate([
+        $cred = $request->validate([
             'email'    => ['required','email'],
             'password' => ['required'],
-            'remember' => ['sometimes','boolean'],
+            // checkbox は boolean にしなくてもOK。使うときに boolean() で拾う
         ]);
 
-        $user = User::where('email', $data['email'])->first();
+        // admins プロバイダを使って認証
+        $remember = $request->boolean('remember');
 
-        if (!$user || !Hash::check($data['password'], $user->password)) {
-            return back()->withErrors(['email' => 'メールアドレスまたはパスワードが違います。'])
-                         ->onlyInput('email');
+        if (! Auth::guard('admin')->attempt($cred, $remember)) {
+            // 情報漏えい防止のためメッセージは固定
+            return back()
+                ->withErrors(['email' => 'メールアドレスまたはパスワードが違います。'])
+                ->onlyInput('email');
         }
 
-        // 管理者以外は弾く
-        if (($user->role ?? null) !== 'admin') {
-            return back()->withErrors(['email' => '管理者権限がありません。']);
-        }
-
-        Auth::guard('admin')->login($user, (bool)($data['remember'] ?? false));
         $request->session()->regenerate();
 
-        return redirect()->intended(route('admin.dashboard'));
+        // Breeze/Jetstream互換: intended を使い、相対URL指定
+        return redirect()->intended(route('admin.dashboard', absolute: false));
     }
 
     public function logout(Request $request)
@@ -46,6 +43,7 @@ class LoginController extends Controller
         Auth::guard('admin')->logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
+
         return redirect()->route('admin.login');
     }
 }

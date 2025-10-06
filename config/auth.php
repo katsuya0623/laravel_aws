@@ -2,11 +2,6 @@
 
 return [
 
-    /*
-    |--------------------------------------------------------------------------
-    | Authentication Defaults
-    |--------------------------------------------------------------------------
-    */
     'defaults' => [
         'guard' => env('AUTH_GUARD', 'web'),
         'passwords' => env('AUTH_PASSWORD_BROKER', 'users'),
@@ -25,22 +20,20 @@ return [
             'provider' => 'users',
         ],
 
-        // 応募者（エンドユーザー）
+        // （必要なら残すエイリアス。使っていなければ削ってOK）
         'enduser' => [
             'driver'   => 'session',
             'provider' => 'users',
         ],
-
-        // 企業ユーザー
-        'users' => [
+        'users' => [ // ← これも使っていなければ削ってOK
             'driver'   => 'session',
             'provider' => 'users',
         ],
 
-        // 管理者
+        // 管理者：★admins プロバイダを見るように修正
         'admin' => [
             'driver'   => 'session',
-            'provider' => 'users',
+            'provider' => 'admins',  // ← ココを users → admins に
         ],
     ],
 
@@ -56,10 +49,11 @@ return [
             'model'  => env('AUTH_MODEL', App\Models\User::class),
         ],
 
-        // 'users' => [
-        //     'driver' => 'database',
-        //     'table'  => 'users',
-        // ],
+        // ★ 追加：管理者用プロバイダ（adminsテーブル & App\Models\Admin）
+        'admins' => [
+            'driver' => 'eloquent',
+            'model'  => App\Models\Admin::class,
+        ],
     ],
 
     /*
@@ -74,15 +68,14 @@ return [
             'expire'   => 60,
             'throttle' => 60,
         ],
-        // 役割ごとに分けたい場合は下記を増やす（必要になったらでOK）
-        // 'enduser' => [...], 'company' => [...], 'admin' => [...]
+        // ★ 管理者のリセットも分けたい場合（任意）
+        'admins' => [
+            'provider' => 'admins',
+            'table'    => env('AUTH_PASSWORD_RESET_TOKEN_TABLE', 'password_reset_tokens'),
+            'expire'   => 60,
+            'throttle' => 60,
+        ],
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Password Confirmation Timeout
-    |--------------------------------------------------------------------------
-    */
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
-
 ];

@@ -13,19 +13,10 @@ class Post extends Model
 
     /** 一括代入 */
     protected $fillable = [
-        'title',
-        'excerpt',
-        'body',
-        'thumbnail_path',
-        'published_at',
-        'slug',
-        'user_id',
-        'category_id',
-        // custom
-        'seo_title',
-        'seo_description',
-        'is_featured',
-        'reading_time',
+        'title','excerpt','body','thumbnail_path','published_at','slug',
+        'user_id','category_id', // ← 後方互換のため残す（そのうち削除でOK）
+        'seo_title','seo_description','is_featured','reading_time',
+        // ★ author_type/author_id は意図せぬ偽装を防ぐため fillable に入れない
     ];
 
     /** 型キャスト */
@@ -35,13 +26,23 @@ class Post extends Model
         'reading_time' => 'integer',
     ];
 
-    /** JSONに含めたい場合は有効化
-     *  protected $appends = ['thumbnail_url', 'has_thumbnail'];
-     */
-
     /* =========================
        Relations
        ========================= */
+
+    /**
+     * ★ 追加：投稿者（admin / user いずれも可）
+     *   - posts.author_type / posts.author_id を参照
+     */
+    public function author()
+    {
+        return $this->morphTo();
+    }
+
+    /**
+     * 既存の後方互換（将来的に削除予定）
+     * 旧データや、まだ user_id を参照している箇所のために残す
+     */
     public function user()
     {
         return $this->belongsTo(User::class);
@@ -61,20 +62,17 @@ class Post extends Model
        Mutators
        ========================= */
 
-    /** "0" や 空文字は NULL に矯正 */
     public function setThumbnailPathAttribute($value): void
     {
         $this->attributes['thumbnail_path'] =
             ($value === '0' || $value === 0 || $value === '') ? null : $value;
     }
 
-    /** boolean 正規化 */
     public function setIsFeaturedAttribute($value): void
     {
         $this->attributes['is_featured'] = filter_var($value, FILTER_VALIDATE_BOOLEAN);
     }
 
-    /** 空なら null、数値なら1以上の整数に矯正 */
     public function setReadingTimeAttribute($value): void
     {
         if ($value === '' || $value === null) {
@@ -88,60 +86,36 @@ class Post extends Model
        Accessors
        ========================= */
 
-    /**
-     * サムネイルの公開URLを統一的に取得
-     * - http(s):// or // はそのまま返す
-     * - '/storage/...','storage/...' は相対化して public ディスクから URL 生成
-     * - DB に 'thumbnail' カラムがある場合にもフォールバック
-     * - 実ファイルが無ければデフォルト画像にフォールバック
-     */
+    /** 投稿者名（admin/user どちらでも取れる・未設定は「管理者」） */
+    public function getAuthorNameAttribute(): string
+    {
+        return optional($this->author)->name
+            ?? optional($this->user)->name   // 旧データ救済
+            ?? '管理者';
+    }
+
     public function getThumbnailUrlAttribute(): string
     {
         $path = $this->thumbnail_path ?? $this->thumbnail ?? null;
-
         $fallback = asset('images/noimage.svg');
+        if (!$path) return $fallback;
 
-        if (!$path) {
-            return $fallback;
-        }
+        if (Str::startsWith($path, ['http://', 'https://', '//'])) return $path;
 
-        // 既にフルURL/CDN
-        if (Str::startsWith($path, ['http://', 'https://', '//'])) {
-            return $path;
-        }
+        if (Str::startsWith($path, '/storage/')) $path = Str::after($path, '/storage/');
+        if (Str::startsWith($path, 'storage/'))  $path = Str::after($path, 'storage/');
 
-        // '/storage/...' → '...' 、'storage/...' → '...' に正規化
-        if (Str::startsWith($path, '/storage/')) {
-            $path = Str::after($path, '/storage/');
-        }
-        if (Str::startsWith($path, 'storage/')) {
-            $path = Str::after($path, 'storage/');
-        }
-
-        // 実在チェックしてから公開URLへ
         return Storage::disk('public')->exists($path)
-            ? Storage::disk('public')->url($path)   // => /storage/xxx
+            ? Storage::disk('public')->url($path)
             : $fallback;
     }
 
-    /**
-     * 「サムネがあるか」を判定（Blade の no image 表示用）
-     */
     public function getHasThumbnailAttribute(): bool
     {
         $path = $this->thumbnail_path ?? $this->thumbnail ?? null;
         if (!$path) return false;
-
-        // フルURL or /storage/... は「ある」とみなす（外部CDNや直リンク対応）
-        if (Str::startsWith($path, ['http://','https://','//','/storage/'])) {
-            return true;
-        }
-
-        // 'storage/...' を相対化して存在チェック
-        if (Str::startsWith($path, 'storage/')) {
-            $path = Str::after($path, 'storage/');
-        }
-
+        if (Str::startsWith($path, ['http://','https://','//','/storage/'])) return true;
+        if (Str::startsWith($path, 'storage/')) $path = Str::after($path, 'storage/');
         return Storage::disk('public')->exists($path);
     }
 
@@ -149,14 +123,12 @@ class Post extends Model
        Scopes
        ========================= */
 
-    /** キーワード AND 検索（title/excerpt/body/slug/seo_title/seo_description） */
     public function scopeKeyword($query, ?string $kw)
     {
         if (!$kw) return $query;
-
         $tokens = preg_split('/\s+/u', trim($kw));
         foreach ($tokens as $t) {
-            $like = '%' . $t . '%';
+            $like = '%'.$t.'%';
             $query->where(function ($qq) use ($like) {
                 $qq->where('title', 'like', $like)
                    ->orWhere('excerpt', 'like', $like)
@@ -169,7 +141,6 @@ class Post extends Model
         return $query;
     }
 
-    /** 公開済みの記事のみ（必要なら利用） */
     public function scopePublished($query)
     {
         return $query->whereNotNull('published_at')
@@ -181,19 +152,14 @@ class Post extends Model
        ========================= */
     protected static function booted(): void
     {
-        // CLI 実行時（migrate 等）はスキップ
-        if (app()->runningInConsole()) {
-            return;
-        }
+        if (app()->runningInConsole()) return;
 
-        // 保存前：category_id を反映（null 可）
         static::saving(function (self $post): void {
             if (function_exists('request') && request()->has('category_id')) {
                 $post->category()->associate(request()->input('category_id') ?: null);
             }
         });
 
-        // 保存後：tags を sync
         static::saved(function (self $post): void {
             if (method_exists($post, 'tags')
                 && function_exists('request')

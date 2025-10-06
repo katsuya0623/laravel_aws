@@ -1,26 +1,38 @@
 {{-- resources/views/layouts/navigation.blade.php --}}
 <nav x-data="{ open: false }" class="bg-white border-b border-gray-100">
   @php
-    // 現在ログイン（adminガード優先）
-    $adminUser = auth('admin')->user();
-    $webUser   = auth()->user();
-    $current   = $adminUser ?? $webUser;
+    // 1) どの領域か（管理 or フロント）
+    $isAdminArea = request()->routeIs('admin.*') || request()->is('admin/*');
 
-    // 役割に応じたダッシュボードURL
-    $roleDashUrl = function () use ($adminUser) {
-      if ($adminUser && \Illuminate\Support\Facades\Route::has('admin.dashboard')) {
+    // 2) 現在ログインユーザー（領域優先で表示）
+    $adminUser = auth('admin')->user();
+    $webUser   = auth('web')->user();
+    $current   = $isAdminArea ? ($adminUser ?? $webUser) : ($webUser ?? $adminUser);
+
+    // 3) 役割
+    $isAdmin = $current instanceof \App\Models\Admin;
+    $role    = $isAdmin ? 'admin' : ($webUser ? \App\Support\RoleResolver::resolve($webUser) : null);
+
+    // 4) ダッシュボードURL（領域に合わせる）
+    $roleDashUrl = function () use ($isAdminArea) {
+      if ($isAdminArea && \Illuminate\Support\Facades\Route::has('admin.dashboard')) {
         return route('admin.dashboard');
       }
       return \Illuminate\Support\Facades\Route::has('dashboard')
         ? route('dashboard')
         : url('/dashboard');
     };
+
+    // 5) ログアウト先（admin/web で切替）
+    $logoutRoute = ($isAdminArea && \Illuminate\Support\Facades\Route::has('admin.logout'))
+      ? route('admin.logout')
+      : route('logout');
   @endphp
 
   <!-- Primary Navigation Menu -->
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div class="flex justify-between items-center h-16 gap-4">
-      <!-- 左側：ロゴ + Dashboard + グロナビ（可変幅） -->
+      <!-- 左：ロゴ + Dashboard + グロナビ -->
       <div class="flex items-center gap-6 min-w-0 flex-1">
         <!-- Logo -->
         <div class="shrink-0 flex items-center">
@@ -31,24 +43,24 @@
 
         <!-- Dashboard タブ -->
         <div class="hidden sm:flex">
-          <x-nav-link :href="$roleDashUrl()" :active="request()->routeIs('dashboard') || request()->is('admin/dashboard')">
-            {{ __('Dashboard') }}
-          </x-nav-link>
+          <x-nav-link
+            :href="$roleDashUrl()"
+            :active="request()->routeIs('dashboard') || request()->routeIs('admin.dashboard') || request()->is('admin/dashboard')"
+          >{{ __('Dashboard') }}</x-nav-link>
         </div>
 
         {{-- Dashboard 横のグロナビ（PC表示・役割別） --}}
         @if($current)
           @php
-            $is       = fn($p) => request()->is(ltrim($p,'/'));
-            $link     = 'px-2.5 py-1.5 rounded-md text-sm font-medium text-gray-800 hover:bg-gray-100 whitespace-nowrap';
-            $active   = 'bg-gray-100 text-gray-900';
-            $isAdmin  = auth('admin')->check();
-            $role     = optional(auth()->user())->role; // enduser / company など
+            $is     = fn($p) => request()->is(ltrim($p,'/'));
+            $link   = 'px-2.5 py-1.5 rounded-md text-sm font-medium text-gray-800 hover:bg-gray-100 whitespace-nowrap';
+            $active = 'bg-gray-100 text-gray-900';
+            // $isAdmin / $role は先頭の計算結果をそのまま使う
           @endphp
 
           <div class="hidden sm:flex items-center overflow-x-auto min-w-0">
             <ul class="flex items-center gap-1 min-w-max">
-              {{-- 管理者：ダッシュボードと同じ5つ --}}
+              {{-- 管理者メニュー --}}
               @if($isAdmin)
                 <li><a href="{{ route('admin.posts.index') }}"        class="{{ $link }} {{ $is('admin/posts*') ? $active : '' }}">記事一覧</a></li>
                 <li><a href="{{ route('admin.users.index') }}"        class="{{ $link }} {{ $is('admin/users*') ? $active : '' }}">ユーザー管理</a></li>
@@ -56,7 +68,7 @@
                 <li><a href="{{ route('admin.jobs.index') }}"         class="{{ $link }} {{ $is('admin/recruit_jobs*') || $is('admin/jobs*') ? $active : '' }}">求人一覧</a></li>
                 <li><a href="{{ route('admin.applications.index') }}" class="{{ $link }} {{ $is('admin/applications*') ? $active : '' }}">応募一覧</a></li>
 
-              {{-- 企業ユーザー：ダッシュボードと同じ5つ --}}
+              {{-- 企業ユーザー --}}
               @elseif($role === 'company')
                 <li><a href="{{ url('/posts') }}"                             class="{{ $link }} {{ $is('posts*') ? $active : '' }}">投稿一覧（フロント）</a></li>
                 <li><a href="{{ route('front.jobs.index') }}"                 class="{{ $link }} {{ $is('recruit_jobs') ? $active : '' }}">求人一覧</a></li>
@@ -64,7 +76,7 @@
                 <li><a href="{{ route('users.applicants.index') }}"           class="{{ $link }} {{ $is('users/applicants*') ? $active : '' }}">応募者一覧（企業）</a></li>
                 <li><a href="{{ route('users.sponsored_articles.index') }}"   class="{{ $link }} {{ $is('users/sponsored-articles*') ? $active : '' }}">スポンサー記事一覧</a></li>
 
-              {{-- エンドユーザー：ダッシュボードと同じ5つ --}}
+              {{-- エンドユーザー --}}
               @elseif($role === 'enduser')
                 <li><a href="{{ url('/posts') }}"                      class="{{ $link }} {{ $is('posts*') ? $active : '' }}">投稿一覧（フロント）</a></li>
                 <li><a href="{{ route('front.jobs.index') }}"          class="{{ $link }} {{ $is('recruit_jobs') ? $active : '' }}">求人一覧</a></li>
@@ -77,7 +89,7 @@
         @endif
       </div>
 
-      <!-- 右側：アカウント（固定幅・重ならない） -->
+      <!-- 右：アカウント -->
       <div class="hidden sm:flex sm:items-center sm:ms-6 flex-shrink-0">
         <x-dropdown align="right" width="48">
           <x-slot name="trigger">
@@ -92,14 +104,16 @@
           </x-slot>
 
           <x-slot name="content">
-            <x-dropdown-link :href="route('profile.edit')">
-              {{ __('Profile') }}
-            </x-dropdown-link>
+            @unless($isAdmin)
+              <x-dropdown-link :href="route('profile.edit')">
+                {{ __('Profile') }}
+              </x-dropdown-link>
+            @endunless
 
             <!-- Authentication -->
-            <form method="POST" action="{{ route('logout') }}">
+            <form method="POST" action="{{ $logoutRoute }}">
               @csrf
-              <x-dropdown-link :href="route('logout')"
+              <x-dropdown-link :href="$logoutRoute"
                 onclick="event.preventDefault(); this.closest('form').submit();">
                 {{ __('Log Out') }}
               </x-dropdown-link>
@@ -123,18 +137,17 @@
   <!-- Responsive Navigation Menu（SP展開時） -->
   <div :class="{'block': open, 'hidden': ! open}" class="hidden sm:hidden">
     <div class="pt-2 pb-3 space-y-1">
-      <x-responsive-nav-link :href="$roleDashUrl()" :active="request()->routeIs('dashboard') || request()->is('admin/dashboard')">
-        {{ __('Dashboard') }}
-      </x-responsive-nav-link>
+      <x-responsive-nav-link
+        :href="$roleDashUrl()"
+        :active="request()->routeIs('dashboard') || request()->routeIs('admin.dashboard') || request()->is('admin/dashboard')"
+      >{{ __('Dashboard') }}</x-responsive-nav-link>
     </div>
 
     @if($current)
       @php
-        $is      = fn($p) => request()->is(ltrim($p,'/'));
-        $rItem   = 'block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100';
-        $on      = 'bg-gray-100 text-gray-900';
-        $isAdmin = auth('admin')->check();
-        $role    = optional(auth()->user())->role;
+        $is    = fn($p) => request()->is(ltrim($p,'/'));
+        $rItem = 'block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100';
+        $on    = 'bg-gray-100 text-gray-900';
       @endphp
 
       <div class="pt-2 pb-3 border-t border-gray-200">
@@ -170,13 +183,15 @@
       </div>
 
       <div class="mt-3 space-y-1">
-        <x-responsive-nav-link :href="route('profile.edit')">
-          {{ __('Profile') }}
-        </x-responsive-nav-link>
+        @unless($isAdmin)
+          <x-responsive-nav-link :href="route('profile.edit')">
+            {{ __('Profile') }}
+          </x-responsive-nav-link>
+        @endunless
 
-        <form method="POST" action="{{ route('logout') }}">
+        <form method="POST" action="{{ $logoutRoute }}">
           @csrf
-          <x-responsive-nav-link :href="route('logout')"
+          <x-responsive-nav-link :href="$logoutRoute"
             onclick="event.preventDefault(); this.closest('form').submit();">
             {{ __('Log Out') }}
           </x-responsive-nav-link>
