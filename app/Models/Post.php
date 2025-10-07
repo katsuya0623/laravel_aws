@@ -17,6 +17,7 @@ class Post extends Model
         'user_id','category_id', // ← 後方互換のため残す（そのうち削除でOK）
         'seo_title','seo_description','is_featured','reading_time',
         // ★ author_type/author_id は意図せぬ偽装を防ぐため fillable に入れない
+        'sponsor_company_id', // ★ 追加：スポンサー企業のFK
     ];
 
     /** 型キャスト */
@@ -31,7 +32,7 @@ class Post extends Model
        ========================= */
 
     /**
-     * ★ 追加：投稿者（admin / user いずれも可）
+     * ★ 投稿者（admin / user いずれも可）
      *   - posts.author_type / posts.author_id を参照
      */
     public function author()
@@ -56,6 +57,14 @@ class Post extends Model
     public function tags()
     {
         return $this->belongsToMany(\App\Models\Tag::class);
+    }
+
+    /**
+     * ★ 追加：スポンサー企業（任意）
+     */
+    public function sponsorCompany()
+    {
+        return $this->belongsTo(\App\Models\Company::class, 'sponsor_company_id');
     }
 
     /* =========================
@@ -145,6 +154,14 @@ class Post extends Model
     {
         return $query->whereNotNull('published_at')
                      ->where('published_at', '<=', now());
+    }
+
+    /**
+     * ★ 追加：スポンサー付き記事のみ
+     */
+    public function scopeSponsored($query)
+    {
+        return $query->whereNotNull('sponsor_company_id');
     }
 
     /* =========================

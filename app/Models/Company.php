@@ -5,9 +5,9 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Storage;
-
-// ★ 追加：明示インポート
 use App\Models\CompanyProfile;
+// スポンサー逆参照で使う（FQCNでもOK）
+use App\Models\Post;
 
 class Company extends Model
 {
@@ -19,7 +19,13 @@ class Company extends Model
         'name',
         'slug',
         'description',
+        'is_sponsor', // ★ 追加：管理画面で更新できるように
         // companies 側にロゴ列があるなら 'logo','logo_path' を追加してOK
+    ];
+
+    // ★ 追加：booleanとして扱う
+    protected $casts = [
+        'is_sponsor' => 'boolean',
     ];
 
     /** $company->logo_url が使えるようにする */
@@ -32,7 +38,6 @@ class Company extends Model
     public function profile(): ?CompanyProfile
     {
         if (empty($this->name)) return null;
-
         return CompanyProfile::where('company_name', $this->name)->first();
     }
 
@@ -78,5 +83,23 @@ class Company extends Model
             ?? $this->logo
             ?? $this->thumbnail_path
             ?? null;
+    }
+
+    // ===== ここからスポンサー機能の追加 =====
+
+    /**
+     * スポンサー企業だけに絞るスコープ
+     */
+    public function scopeSponsor($query)
+    {
+        return $query->where('is_sponsor', true);
+    }
+
+    /**
+     * この会社をスポンサーに持つ記事一覧（posts.sponsor_company_id = companies.id）
+     */
+    public function sponsoredPosts()
+    {
+        return $this->hasMany(Post::class, 'sponsor_company_id');
     }
 }
