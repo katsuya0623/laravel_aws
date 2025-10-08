@@ -5,9 +5,6 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Storage;
-use App\Models\CompanyProfile;
-// スポンサー逆参照で使う（FQCNでもOK）
-use App\Models\Post;
 
 class Company extends Model
 {
@@ -19,26 +16,40 @@ class Company extends Model
         'name',
         'slug',
         'description',
-        'is_sponsor', // ★ 追加：管理画面で更新できるように
-        // companies 側にロゴ列があるなら 'logo','logo_path' を追加してOK
+        // スポンサー機能は不使用のため is_sponsor は外しました
+        // ロゴ系の列を使う場合は 'logo', 'logo_path' などをここに追加してください
     ];
 
-    // ★ 追加：booleanとして扱う
-    protected $casts = [
-        'is_sponsor' => 'boolean',
-    ];
+    // 追加のキャストは現状なし（is_sponsor も削除）
 
-    /** $company->logo_url が使えるようにする */
+    /** 会社ロゴURLを自動で付与 */
     protected $appends = ['logo_url'];
+
+    /* =======================================================
+     |  リレーション
+     * =======================================================*/
+
+    /**
+     * 会社に紐づくユーザー（企業アカウント）
+     * ピボット: company_user（company_id, user_id）を想定
+     */
+    public function users()
+    {
+        return $this->belongsToMany(\App\Models\User::class)->withTimestamps();
+    }
+
+    /* =======================================================
+     |  会社プロフィール (既存の突合仕様のまま)
+     * =======================================================*/
 
     /**
      * Admin側の company_profiles を突合
      * - slug は無い想定なので、companies.name ≒ company_profiles.company_name で突合
      */
-    public function profile(): ?CompanyProfile
+    public function profile(): ?\App\Models\CompanyProfile
     {
         if (empty($this->name)) return null;
-        return CompanyProfile::where('company_name', $this->name)->first();
+        return \App\Models\CompanyProfile::where('company_name', $this->name)->first();
     }
 
     /**
@@ -69,7 +80,7 @@ class Company extends Model
             }
         }
 
-        // 4) 最後の保険（任意パスに変更OK）
+        // 4) 最後の保険
         return asset('images/noimage.svg');
     }
 
@@ -85,21 +96,9 @@ class Company extends Model
             ?? null;
     }
 
-    // ===== ここからスポンサー機能の追加 =====
-
-    /**
-     * スポンサー企業だけに絞るスコープ
-     */
-    public function scopeSponsor($query)
-    {
-        return $query->where('is_sponsor', true);
-    }
-
-    /**
-     * この会社をスポンサーに持つ記事一覧（posts.sponsor_company_id = companies.id）
-     */
-    public function sponsoredPosts()
-    {
-        return $this->hasMany(Post::class, 'sponsor_company_id');
-    }
+    /* =======================================================
+     |  （スポンサー関連は不使用のため削除）
+     *  - scopeSponsor()
+     *  - sponsoredPosts()
+     * =======================================================*/
 }

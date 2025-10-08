@@ -27,6 +27,28 @@
     $logoutRoute = ($isAdminArea && \Illuminate\Support\Facades\Route::has('admin.logout'))
       ? route('admin.logout')
       : route('logout');
+
+    // 6) 企業一覧 URL（Filament を最優先）
+    $companiesUrl = \Illuminate\Support\Facades\Route::has('filament.admin.resources.companies.index')
+      ? route('filament.admin.resources.companies.index')        // Filament (/admin/companies)
+      : (\Illuminate\Support\Facades\Route::has('admin.companies.index')
+          ? route('admin.companies.index')                       // 旧Bladeが残っている場合
+          : url('/admin/companies'));                            // 最終フォールバック
+
+    // 7) エンドユーザー一覧 URL（Filament 優先、users / end-users どちらのスラッグでも対応）
+    $endUsersUrl = \Illuminate\Support\Facades\Route::has('filament.admin.resources.end-users.index')
+      ? route('filament.admin.resources.end-users.index')
+      : (\Illuminate\Support\Facades\Route::has('filament.admin.resources.users.index')
+          ? route('filament.admin.resources.users.index')
+          : (\Illuminate\Support\Facades\Route::has('admin.users.index')
+              ? route('admin.users.index')
+              : url('/admin/users')));
+
+    // 8) エンドユーザーのアクティブ判定
+    $isEndUsersActive =
+      request()->routeIs('filament.admin.resources.end-users.*')
+      || request()->routeIs('filament.admin.resources.users.*')
+      || request()->is('admin/users*');
   @endphp
 
   <!-- Primary Navigation Menu -->
@@ -55,17 +77,22 @@
             $is     = fn($p) => request()->is(ltrim($p,'/'));
             $link   = 'px-2.5 py-1.5 rounded-md text-sm font-medium text-gray-800 hover:bg-gray-100 whitespace-nowrap';
             $active = 'bg-gray-100 text-gray-900';
-            // $isAdmin / $role は先頭の計算結果をそのまま使う
           @endphp
 
           <div class="hidden sm:flex items-center overflow-x-auto min-w-0">
             <ul class="flex items-center gap-1 min-w-max">
               {{-- 管理者メニュー --}}
               @if($isAdmin)
-               <li><a href="{{ route('admin.posts.create') }}"        class="{{ $link }} {{ $is('admin/posts/create') ? $active : '' }}">記事作成</a></li>
+                <li><a href="{{ route('admin.posts.create') }}"        class="{{ $link }} {{ $is('admin/posts/create') ? $active : '' }}">記事作成</a></li>
                 <li><a href="{{ route('admin.posts.index') }}"        class="{{ $link }} {{ $is('admin/posts*') ? $active : '' }}">記事一覧</a></li>
-                <li><a href="{{ route('admin.users.index') }}"        class="{{ $link }} {{ $is('admin/users*') ? $active : '' }}">ユーザー管理</a></li>
-                <li><a href="{{ route('admin.companies.index') }}"    class="{{ $link }} {{ $is('admin/companies*') ? $active : '' }}">企業一覧</a></li>
+
+                {{-- ★ エンドユーザー（Filament優先） --}}
+                <li>
+                  <a href="{{ $endUsersUrl }}" class="{{ $link }} {{ $isEndUsersActive ? $active : '' }}">エンドユーザー</a>
+                </li>
+
+                {{-- ★ 企業一覧（Filament優先） --}}
+                <li><a href="{{ $companiesUrl }}"                     class="{{ $link }} {{ $is('admin/companies*') ? $active : '' }}">企業一覧</a></li>
                 <li><a href="{{ route('admin.jobs.index') }}"         class="{{ $link }} {{ $is('admin/recruit_jobs*') || $is('admin/jobs*') ? $active : '' }}">求人一覧</a></li>
                 <li><a href="{{ route('admin.applications.index') }}" class="{{ $link }} {{ $is('admin/applications*') ? $active : '' }}">応募一覧</a></li>
 
@@ -153,9 +180,14 @@
 
       <div class="pt-2 pb-3 border-t border-gray-200">
         @if($isAdmin)
-          <a href="{{ route('admin.posts.index') }}"        class="{{ $rItem }} {{ $is('admin/posts*') ? $on : '' }}">記事一覧</a>
-          <a href="{{ route('admin.users.index') }}"        class="{{ $rItem }} {{ $is('admin/users*') ? $on : '' }}">ユーザー管理</a>
-          <a href="{{ route('admin.companies.index') }}"    class="{{ $rItem }} {{ $is('admin/companies*') ? $on : '' }}">企業一覧</a>
+          <a href="{{ route('admin.posts.index') }}" class="{{ $rItem }} {{ $is('admin/posts*') ? $on : '' }}">記事一覧</a>
+
+          {{-- ★ エンドユーザー（Filament優先） --}}
+          <a href="{{ $endUsersUrl }}" class="{{ $rItem }} {{ $isEndUsersActive ? $on : '' }}">エンドユーザー</a>
+
+          {{-- ★ 企業一覧（Filament優先） --}}
+          <a href="{{ $companiesUrl }}" class="{{ $rItem }} {{ $is('admin/companies*') ? $on : '' }}">企業一覧</a>
+
           <a href="{{ route('admin.jobs.index') }}"         class="{{ $rItem }} {{ $is('admin/recruit_jobs*') || $is('admin/jobs*') ? $on : '' }}">求人一覧</a>
           <a href="{{ route('admin.applications.index') }}" class="{{ $rItem }} {{ $is('admin/applications*') ? $on : '' }}">応募一覧</a>
 
