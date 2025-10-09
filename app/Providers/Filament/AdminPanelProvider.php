@@ -9,9 +9,8 @@ use Filament\Support\Colors\Color;
 use Filament\Navigation\NavigationGroup;
 use Filament\Navigation\NavigationItem;
 
-// ★ 追加
-use Filament\Pages\Dashboard as FilamentDashboard;
-use App\Filament\Widgets\LegacyAdminDashboard;
+use App\Filament\Pages\AdminDashboard; // ← 自作ダッシュボード Page
+use App\Filament\Resources\PostResource; // ← 追加：PostResource を明示的に use
 
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -33,34 +32,56 @@ class AdminPanelProvider extends PanelProvider
             ->brandName('nibi Admin')
             ->colors(['primary' => Color::Indigo])
 
+            // 自動検出
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
-            ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
+            ->discoverPages(in: app_path('Filament/Pages'),     for: 'App\\Filament\\Pages')
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
 
-            // ★ 追加：Filament に Dashboard ページを明示登録（/admin と ルート名を生やす）
+            // ← 追加：自動検出が拾えない場合に備えて明示登録
+            ->resources([
+                PostResource::class,
+            ])
+
+            // ダッシュボード（/admin 以下のホームはこの Page）
             ->pages([
-                FilamentDashboard::class,   // => route('filament.admin.pages.dashboard') が定義される
+                AdminDashboard::class,
             ])
 
-            // ★ 追加：レガシーダッシュボードウィジェットを表示
-            ->widgets([
-                LegacyAdminDashboard::class,
-            ])
+            // ロゴ/ホームクリック時は必ず /admin へ
+            ->homeUrl('/admin')
 
-            // ナビは /admin（= Filament ダッシュボード）か /admin/dashboard のどちらでもアクティブに
+            // 追加メニュー
             ->navigationItems([
-                NavigationItem::make('ダッシュボードへ')
-                    ->icon('heroicon-o-home')
-                    ->sort(-100)
-                    ->url('/admin') // 押すと /admin を開く（安全）
-                    ->isActiveWhen(fn () => request()->is('admin') || request()->is('admin/dashboard')),
+                // ← 追加：記事（PostResource）へのリンクを安全に
+                NavigationItem::make('記事')
+                    ->group('Post')
+                    ->icon('heroicon-o-document-text')
+                    ->url(fn () => PostResource::getUrl()) // ルート名直書きを回避
+                    ->isActiveWhen(fn () => request()->is('admin/posts*'))
+                    ->sort(1),
+
+                NavigationItem::make('求人一覧')
+                    ->group('Management')
+                    ->icon('heroicon-o-briefcase')
+                    ->url(fn () => route('admin.jobs.index'))
+                    ->isActiveWhen(fn () => request()->is('admin/recruit_jobs*') || request()->is('admin/jobs*'))
+                    ->sort(10),
+
+                NavigationItem::make('応募一覧')
+                    ->group('Management')
+                    ->icon('heroicon-o-document-text')
+                    ->url(fn () => route('admin.applications.index'))
+                    ->isActiveWhen(fn () => request()->is('admin/applications*'))
+                    ->sort(11),
             ])
+
             ->navigationGroups([
                 NavigationGroup::make('Company'),
                 NavigationGroup::make('Post'),
                 NavigationGroup::make('Management'),
             ])
 
+            // ミドルウェア
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,

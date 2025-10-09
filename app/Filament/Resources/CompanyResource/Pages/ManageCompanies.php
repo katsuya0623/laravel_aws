@@ -24,7 +24,7 @@ class ManageCompanies extends ManageRecords
             Actions\Action::make('back')
                 ->label('ダッシュボードへ')
                 ->icon('heroicon-o-home')
-                ->url(route('admin.dashboard')),
+                ->url('/admin/dashboard'), // ← ここを修正
 
             Actions\CreateAction::make()
                 ->label('作成')

@@ -16,7 +16,7 @@ class ManageEndUsers extends ManageRecords
             Actions\Action::make('back')
                 ->label('ダッシュボードへ')
                 ->icon('heroicon-o-home')
-                ->url(route('admin.dashboard'))
+                ->url('/admin/dashboard') // ← ルート指定からパス指定へ修正
                 ->color('gray'),
             Actions\CreateAction::make()->label('作成'),
         ];

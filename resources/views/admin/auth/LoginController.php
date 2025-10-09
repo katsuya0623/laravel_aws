@@ -30,8 +30,8 @@ class LoginController extends Controller
 
         $request->session()->regenerate();
 
-        // ← ここを /admin に
-        return redirect()->intended('/admin');
+        // 名前付きルートに依存せず、確実に /admin/dashboard へ
+        return redirect()->intended('/admin/dashboard');
     }
 
     public function logout(Request $request)

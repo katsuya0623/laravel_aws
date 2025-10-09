@@ -7,16 +7,12 @@ use Illuminate\Http\Request;
 
 // Top / Front
 use App\Http\Controllers\Front\LandingController;
-use App\Http\Controllers\Front\PostController as FrontPostController;
 use App\Http\Controllers\Front\CompanyController as FCompanyController;
 use App\Http\Controllers\Front\JobController as FrontJobController;
 use App\Http\Controllers\Front\ApplicationController;
 
 // Admin
 use App\Http\Controllers\Admin\PostController;
-use App\Http\Controllers\Admin\UserController;
-use App\Http\Controllers\Admin\JobController as AdminJobController;
-// use App\Http\Controllers\Admin\CompanyController as AdminCompanyController;
 use App\Http\Controllers\Admin\ApplicationsController;
 use App\Http\Controllers\Admin\CompanyUserAssignController;
 use App\Http\Controllers\Admin\UserQuickAssignController;
@@ -30,6 +26,10 @@ use App\Http\Controllers\FavoriteController;
 // Users(企業側)
 use App\Http\Controllers\Users\ApplicantController;
 use App\Http\Controllers\Users\SponsoredArticleController;
+
+// Filament Resources
+use App\Filament\Resources\RecruitJobResource;
+use App\Filament\Resources\PostResource;
 
 /*
 |--------------------------------------------------------------------------
@@ -54,12 +54,11 @@ Route::permanentRedirect('/companys',        '/company');
 Route::permanentRedirect('/companies',       '/company');
 
 // 旧 /jobs/{slugOrId} → 新 /recruit_jobs/{slugOrId}
-Route::get('/jobs/{slugOrId}', function (string $slugOrId) {
-    return redirect("/recruit_jobs/{$slugOrId}", 301);
-})->where('slugOrId', '^([A-Za-z0-9\-]+|\d+)$');
+Route::get('/jobs/{slugOrId}', fn (string $slugOrId) => redirect("/recruit_jobs/{$slugOrId}", 301))
+    ->where('slugOrId', '^([A-Za-z0-9\-]+|\d+)$');
 Route::permanentRedirect('/jobs', '/recruit_jobs');
 
-// ===== Front: Company (list/detail) =====
+// ===== Front: Company =====
 Route::prefix('company')->name('front.company.')->group(function () {
     Route::get('/', [FCompanyController::class, 'index'])->name('index');
     Route::get('/{slugOrId}', [FCompanyController::class, 'show'])
@@ -67,7 +66,7 @@ Route::prefix('company')->name('front.company.')->group(function () {
         ->name('show');
 });
 
-// ===== Front: Jobs (list/detail/apply) =====
+// ===== Front: Jobs =====
 Route::prefix('recruit_jobs')->group(function () {
     Route::post('/{job:slug}/apply', [ApplicationController::class, 'store'])
         ->middleware(['auth:web', 'role:enduser'])
@@ -85,7 +84,7 @@ Route::prefix('recruit_jobs')->group(function () {
     });
 });
 
-/* ===== MYPAGE: Applications & Favorites（エンドユーザーのみ） ===== */
+/* ===== MYPAGE（エンドユーザーのみ） ===== */
 Route::middleware(['auth:web', 'role:enduser'])->prefix('mypage')->name('mypage.')->group(function () {
     Route::get('/applications', [ApplicationController::class, 'index'])->name('applications.index');
     Route::get('/applications/{application}', [ApplicationController::class, 'show'])
@@ -112,64 +111,68 @@ Route::view('/dashboard', 'dashboard')
     ->name('dashboard');
 
 /* ------------------------------------------------------------------
-| Admin（管理者のみ：auth:admin） + Filament ダッシュボードのエイリアス
+| Admin（auth:admin）
 |-------------------------------------------------------------------*/
-
-// /admin/dashboard → Filament のダッシュボードへ
-Route::middleware(['auth:admin'])->get('/admin/dashboard', function () {
-    return redirect()->route('filament.admin.pages.dashboard');
-})->name('admin.dashboard');
-
 Route::prefix('admin')->middleware(['auth:admin'])->name('admin.')->group(function () {
 
-    // Posts（Blade 版は継続）
-    if (class_exists(App\Http\Controllers\Admin\PostController::class)) {
-        Route::resource('posts', App\Http\Controllers\Admin\PostController::class);
-    } else {
-        Route::get('posts', fn () => response('posts index (stub)', 200))->name('posts.index');
-        Route::get('posts/create', fn () => response('posts create (stub)', 200))->name('posts.create');
-        Route::post('posts', fn () => abort(501));
-    }
+    // ✅ Bladeの /admin/posts ルートは削除（Filament に任せる）
+    //    もし旧リンク互換が必要なら、別パスのエイリアスだけ用意（任意）
+    Route::get('__alias/filament-posts', fn () =>
+        redirect(PostResource::getUrl('index', panel: 'admin'))
+    )->name('posts.index'); // 旧: route('admin.posts.index') をここに寄せてもOK
 
-    // Users は Filament へ移行のため停止
+    Route::get('__alias/filament-posts/create', fn () =>
+        redirect(PostResource::getUrl('create', panel: 'admin'))
+    )->name('posts.create');
+
+    Route::get('__alias/filament-posts/{post}/edit', fn ($post) =>
+        redirect(PostResource::getUrl('edit', ['record' => $post], panel: 'admin'))
+    )->whereNumber('post')->name('posts.edit');
+
+    // ★互換：旧Bladeの AJAX プレアップロードが残っていても落ちないように
+    Route::post('/preupload', [PostController::class, 'preupload'])->name('preupload');
 
     // 行内操作API
     Route::post  ('users/{user}/set-role',                 [UserQuickAssignController::class,'setRole'])
         ->whereNumber('user')->name('users.set_role');
     Route::post  ('users/{user}/assign-company',           [UserQuickAssignController::class,'assignCompany'])
         ->whereNumber('user')->name('users.assign_company');
-    Route::delete('users/{user}/assign-company/{company}', [UserQuickAssignController::class,'unassignCompany'])
+    Route::delete('users/{user}/assign-company/{company}', [UserQuickAssignController::class,'unassign'])
         ->whereNumber(['user','company'])->name('users.unassign_company');
 
-    // Recruit Jobs
-    Route::resource('recruit_jobs', AdminJobController::class)
-        ->parameters(['recruit_jobs' => 'job'])
-        ->names([
-            'index'   => 'jobs.index',
-            'create'  => 'jobs.create',
-            'store'   => 'jobs.store',
-            'show'    => 'jobs.show',
-            'edit'    => 'jobs.edit',
-            'update'  => 'jobs.update',
-            'destroy' => 'jobs.destroy',
-        ]);
+    /* Recruit Jobs（Filament に委譲） */
+    $recruitSlug = method_exists(RecruitJobResource::class, 'getSlug') ? RecruitJobResource::getSlug() : 'recruit-jobs';
 
-    // Companies（Blade版停止／Filament委譲）
+    Route::get('recruit_jobs', function () use ($recruitSlug) {
+        $name = "filament.admin.resources.$recruitSlug.index";
+        return redirect()->to(\Illuminate\Support\Facades\Route::has($name)
+            ? \App\Filament\Resources\RecruitJobResource::getUrl('index')
+            : url('/admin/recruit_jobs'));
+    })->name('jobs.index');
 
-    // 会社担当者の割り振り
-    Route::get   ('companies/{company}/assign-user',                [CompanyUserAssignController::class,'edit'])
-        ->whereNumber('company')->name('companies.assign_user');
-    Route::post  ('companies/{company}/assign-user',                [CompanyUserAssignController::class,'assignExisting'])
-        ->whereNumber('company')->name('companies.assign_user.post');
-    Route::post  ('companies/{company}/assign-user/create',         [CompanyUserAssignController::class,'createAndAssign'])
-        ->whereNumber('company')->name('companies.assign_user.create');
-    Route::delete('companies/{company}/assign-user/{user}',         [CompanyUserAssignController::class,'unassign'])
-        ->whereNumber(['company','user'])->name('companies.assign_user.delete');
-    Route::patch ('companies/{company}/assign-user/{user}/primary', [CompanyUserAssignController::class,'setPrimary'])
-        ->whereNumber(['company','user'])->name('companies.assign_user.primary');
+    Route::get('recruit_jobs/create', function () use ($recruitSlug) {
+        $name = "filament.admin.resources.$recruitSlug.create";
+        return redirect()->to(\Illuminate\Support\Facades\Route::has($name)
+            ? \App\Filament\Resources\RecruitJobResource::getUrl('create')
+            : url('/admin/recruit_jobs'));
+    })->name('jobs.create');
 
-    // Admin: 応募一覧 & Export
-    Route::get('applications', [ApplicationsController::class, 'index'])->name('applications.index');
+    Route::get('recruit_jobs/{job}', function ($job) use ($recruitSlug) {
+        $name = "filament.admin.resources.$recruitSlug.edit";
+        return redirect()->to(\Illuminate\Support\Facades\Route::has($name)
+            ? \App\Filament\Resources\RecruitJobResource::getUrl('edit', ['record' => $job])
+            : url("/admin/recruit_jobs/{$job}/edit"));
+    })->whereNumber('job')->name('jobs.show');
+
+    Route::get('recruit_jobs/{job}/edit', function ($job) use ($recruitSlug) {
+        $name = "filament.admin.resources.$recruitSlug.edit";
+        return redirect()->to(\Illuminate\Support\Facades\Route::has($name)
+            ? \App\Filament\Resources\RecruitJobResource::getUrl('edit', ['record' => $job])
+            : url("/admin/recruit_jobs/{$job}/edit"));
+    })->whereNumber('job')->name('jobs.edit');
+
+    // 応募一覧（Blade 版）
+    Route::get('applications',        [ApplicationsController::class, 'index'])->name('applications.index');
     Route::get('applications/export', [ApplicationsController::class, 'export'])->name('applications.export');
 
     // アップロード疎通テスト
@@ -185,26 +188,31 @@ Route::prefix('admin')->middleware(['auth:admin'])->name('admin.')->group(functi
     })->name('posts.uploadtest');
 });
 
-/* ===== Filament 暫定エイリアス ===== */
-if (!Route::has('filament.admin.resources.posts.index') && Route::has('admin.posts.index')) {
-    Route::middleware(['auth:admin'])->get('/admin/__alias/filament-posts', function () {
-        return redirect()->route('admin.posts.index');
-    })->name('filament.admin.resources.posts.index');
-}
-if (!Route::has('filament.admin.resources.posts.create') && Route::has('admin.posts.create')) {
-    Route::middleware(['auth:admin'])->get('/admin/__alias/filament-posts/create', function () {
-        return redirect()->route('admin.posts.create');
-    })->name('filament.admin.resources.posts.create');
+/* ===== Filament 暫定エイリアス（保険） ===== */
+if (!Route::has('filament.admin.resources.applications.index')) {
+    Route::redirect('/admin/__alias/filament-applications', '/admin/applications', 302)
+        ->name('filament.admin.resources.applications.index');
 }
 
-/* Logout（Filament が参照するルート名に合わせる） */
+/* ★旧ルート名の救済（posts.index）— Resource未登録でも落ちない版 */
+if (!Route::has('filament.admin.resources.posts.index')) {
+    Route::get('/admin/__alias/filament-posts-fallback', function () {
+        return redirect('/admin'); // 最低限ダッシュボードへ避難
+    })->name('filament.admin.resources.posts.index');
+}
+
+/* ★Filament互換のログアウト／ログイン ルートを救済 */
 if (!Route::has('filament.admin.auth.logout')) {
-    Route::middleware(['web', 'auth:admin'])->post('/admin/__alias/filament-logout', function (Request $r) {
+    Route::match(['POST', 'GET'], '/admin/__alias/filament-logout', function (Request $request) {
         Auth::guard('admin')->logout();
-        $r->session()->invalidate();
-        $r->session()->regenerateToken();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
         return redirect('/admin/login');
     })->name('filament.admin.auth.logout');
+}
+if (!Route::has('filament.admin.auth.login')) {
+    Route::get('/admin/__alias/filament-login', fn () => redirect('/admin/login'))
+        ->name('filament.admin.auth.login');
 }
 
 /* ===== Breeze Profile ===== */
@@ -218,48 +226,10 @@ Route::middleware('auth:web')->group(function () {
 });
 
 // ===== includes =====
-if (file_exists(__DIR__.'/auth.php'))  { require __DIR__.'/auth.php'; }
-if (file_exists(__DIR__.'/admin.php')) { require __DIR__.'/admin.php'; }
-if (file_exists(__DIR__.'/front_public.php')) { require __DIR__.'/front_public.php'; }
+if (file_exists(__DIR__.'/auth.php'))        { require __DIR__.'/auth.php'; }
+if (file_exists(__DIR__.'/admin.php'))       { require __DIR__.'/admin.php'; }
+if (file_exists(__DIR__.'/front_public.php')){ require __DIR__.'/front_public.php'; }
 
-/* ===== DEBUG / DIAG ===== */
-Route::get('/__ping', fn() => 'pong');
-
-Route::middleware(['auth:admin'])->group(function () {
-    Route::get('/__create-plain', function () {
-        $post = new \App\Models\Post(); $post->published_at = now();
-        $categories = \App\Models\Category::orderBy('name')->get();
-        $tags = \App\Models\Tag::orderBy('name')->get();
-        return view('admin.posts.debug_create', compact('post','categories','tags'));
-    });
-
-    Route::get('/debug-create', function () {
-        $post = new \App\Models\Post(); $post->published_at = now();
-        $categories = \App\Models\Category::orderBy('name')->get();
-        $tags = \App\Models\Tag::orderBy('name')->get();
-        return view('admin.posts.debug_create', compact('post','categories','tags'));
-    });
-
-    Route::get('/__role-test', fn() => 'ok');
-});
-
-// 事前アップロードAPI（要一般ログイン）
-Route::post('/__preupload', function (Request $r) {
-    if (!$r->hasFile('thumbnail')) {
-        return response()->json(['ok' => false, 'msg' => 'no file'], 422);
-    }
-    $f = $r->file('thumbnail');
-    if (!$f->isValid()) {
-        return response()->json(['ok' => false, 'msg' => 'err: '.$f->getError()], 422);
-    }
-    if ($f->getSize() > 40 * 1024 * 1024) {
-        return response()->json(['ok' => false, 'msg' => 'too large'], 413);
-    }
-    $path = $f->store('thumbnails', 'public');
-
-    return response()->json([
-        'ok'  => true,
-        'path'=> $path,
-        'url' => Storage::url($path),
-    ]);
-})->middleware(['auth:web'])->name('preupload');
+/* ===== DEBUG ===== */
+Route::get('/__ping', fn () => 'pong');
+Route::middleware(['auth:admin'])->get('/__role-test', fn () => 'ok');

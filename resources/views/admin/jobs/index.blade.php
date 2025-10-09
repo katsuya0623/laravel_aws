@@ -7,14 +7,51 @@
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-50 text-slate-800">
+
+@php
+    use Illuminate\Support\Facades\Route;
+
+    // ===== Helper: Resource URL（存在しなければフォールバック） =====
+    $resUrl = function (string $class, string $page = 'index', string $fallback = '#') {
+        return (class_exists($class) && method_exists($class, 'getUrl'))
+            ? $class::getUrl($page)
+            : $fallback;
+    };
+
+    // ===== Links（Filament優先 → 旧パスへ） =====
+    $dashboardUrl    = url('/admin'); // Filamentのトップ（ダッシュボード）
+    $postsUrl        = $resUrl(\App\Filament\Resources\PostResource::class, 'index', url('/admin/posts'));
+    $companiesUrl    = $resUrl(\App\Filament\Resources\CompanyResource::class, 'index', url('/admin/companies'));
+    $jobsIndexUrl    = $resUrl(\App\Filament\Resources\JobResource::class, 'index', url('/admin/jobs'));
+    $jobsCreateUrl   = $resUrl(\App\Filament\Resources\JobResource::class, 'create', url('/admin/jobs/create'));
+
+    // ===== Job の view/edit を安全に作る（存在しなければ edit / 旧パスへ） =====
+    $jobRoutes = function ($job) {
+        $panel = 'admin';
+        $slug  = \App\Filament\Resources\JobResource::getSlug(); // 'jobs'
+        $editName = "filament.$panel.resources.$slug.edit";
+        $viewName = "filament.$panel.resources.$slug.view";
+
+        $editUrl = Route::has($editName)
+            ? route($editName, ['record' => is_object($job) ? $job->getKey() : $job])
+            : url('/admin/jobs/'.(is_object($job)?$job->id:$job).'/edit');
+
+        $viewUrl = Route::has($viewName)
+            ? route($viewName, ['record' => is_object($job) ? $job->getKey() : $job])
+            : $editUrl; // view が無ければ edit に寄せる
+
+        return [$viewUrl, $editUrl];
+    };
+@endphp
+
   <!-- Top Nav -->
   <header class="bg-slate-900 text-white">
     <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
       <div class="font-semibold tracking-wide">nibi</div>
       <nav class="space-x-6 text-sm">
-        <a href="{{ url('/dashboard') }}" class="hover:underline">ダッシュボード</a>
-        <a href="{{ route('admin.posts.index') ?? '#' }}" class="hover:underline">記事一覧</a>
-        <a href="{{ route('admin.companies.index') ?? '#' }}" class="hover:underline">企業</a>
+        <a href="{{ $dashboardUrl }}" class="hover:underline">ダッシュボード</a>
+        <a href="{{ $postsUrl }}" class="hover:underline">記事一覧</a>
+        <a href="{{ $companiesUrl }}" class="hover:underline">企業</a>
         <a class="font-bold underline">求人</a>
       </nav>
       @auth
@@ -28,7 +65,7 @@
   <main class="max-w-6xl mx-auto px-4 py-6">
     <div class="flex items-center justify-between mb-4">
       <h1 class="text-2xl font-bold">求人一覧</h1>
-      <a href="{{ route('admin.jobs.create') }}"
+      <a href="{{ $jobsCreateUrl }}"
          class="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-2 text-white text-sm hover:bg-indigo-700">
         ＋ 新規作成
       </a>
@@ -55,7 +92,7 @@
           </div>
           <div class="flex gap-2">
             <button class="rounded-lg bg-indigo-600 text-white px-4 py-2 hover:bg-indigo-700">検索</button>
-            <a href="{{ route('admin.jobs.index') }}" class="rounded-lg border px-4 py-2 hover:bg-slate-100">クリア</a>
+            <a href="{{ $jobsIndexUrl }}" class="rounded-lg border px-4 py-2 hover:bg-slate-100">クリア</a>
           </div>
         </form>
 
@@ -70,9 +107,13 @@
         @else
           <ul class="space-y-3">
             @foreach ($jobs as $job)
+              @php
+                  $thumb = $job->image_url ?? $job->thumbnail_url ?? null;
+                  [$jobViewUrl, $jobEditUrl] = $jobRoutes($job);
+              @endphp
+
               <li class="rounded-xl border bg-white p-4 shadow-sm hover:shadow transition">
                 <div class="flex gap-4">
-                  @php $thumb = $job->image_url ?? $job->thumbnail_url ?? null; @endphp
                   @if($thumb)
                     <img src="{{ $thumb }}" alt="" class="w-16 h-16 rounded-lg object-cover border">
                   @else
@@ -83,7 +124,7 @@
 
                   <div class="min-w-0 grow">
                     <div class="flex items-start justify-between gap-3">
-                      <a href="{{ route('admin.jobs.edit', $job) }}"
+                      <a href="{{ $jobEditUrl }}"
                          class="font-semibold truncate hover:underline">{{ $job->title ?? '(無題)' }}</a>
                       <div class="shrink-0">
                         @php
@@ -112,10 +153,9 @@
                     @endif
 
                     <div class="mt-3 flex flex-wrap gap-2">
-                      @if(Route::has('admin.jobs.show'))
-                        <a href="{{ route('admin.jobs.show', $job) }}" class="text-indigo-700 text-sm hover:underline">詳細</a>
-                      @endif
-                      <a href="{{ route('admin.jobs.edit', $job) }}" class="text-indigo-700 text-sm hover:underline">編集</a>
+                      <a href="{{ $jobViewUrl }}" class="text-indigo-700 text-sm hover:underline">詳細</a>
+                      <a href="{{ $jobEditUrl }}" class="text-indigo-700 text-sm hover:underline">編集</a>
+
                       @if(Route::has('admin.jobs.destroy'))
                         <form method="POST" action="{{ route('admin.jobs.destroy', $job) }}"
                               onsubmit="return confirm('削除しますか？');" class="inline">
@@ -145,7 +185,7 @@
           </div>
           <div class="flex flex-wrap gap-2">
             @forelse($statuses as $s)
-              <a href="{{ route('admin.jobs.index', array_filter(['q'=>$q ?? null,'status'=>$s])) }}"
+              <a href="{{ request()->url() . '?' . http_build_query(array_filter(['q'=>$q ?? null,'status'=>$s])) }}"
                  class="px-2 py-1 rounded-full text-sm bg-slate-100 hover:bg-slate-200">
                  #{{ $s }}
               </a>
