@@ -14,7 +14,8 @@ use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Tables\Columns\TextColumn;
 
-// 追加: 行アクション（編集・削除）
+// 追加: 行/ヘッダー アクション（作成・編集・削除）
+use Filament\Tables\Actions\CreateAction;
 use Filament\Tables\Actions\EditAction;
 use Filament\Tables\Actions\DeleteAction;
 
@@ -48,7 +49,7 @@ class CompanyResource extends Resource
                         ->email()
                         ->helperText('入力すると、このメールで会社用ユーザーを作成/更新して会社に紐付けます。')
                         ->dehydrated(false) // Companyテーブルには保存しない
-                        ->required(fn (string $context) => $context === 'create'), // 新規作成時は必須にするなら true
+                        ->required(fn (string $context) => $context === 'create'), // 新規作成時だけ必須
                     TextInput::make('account_password')
                         ->label('パスワード')
                         ->password()
@@ -71,12 +72,23 @@ class CompanyResource extends Resource
                 TextColumn::make('updated_at')->label('更新日')->date('Y-m-d'),
             ])
             ->defaultSort('id', 'desc')
+
+            // ★ 一覧ヘッダーの「新規作成」アクションにも after フックを追加
+            ->headerActions([
+                CreateAction::make()
+                    ->after(function (Company $record, array $data) {
+                        self::upsertCompanyAccount($record, $data);
+                    }),
+            ])
+
+            // 行アクション
             ->actions([
                 // 編集後にユーザー作成/紐付けを走らせる
                 EditAction::make()
                     ->after(function (Company $record, array $data) {
                         self::upsertCompanyAccount($record, $data);
                     }),
+
                 DeleteAction::make()
                     ->label('削除')
                     ->requiresConfirmation()
@@ -94,38 +106,49 @@ class CompanyResource extends Resource
         $email    = trim((string)($data['account_email'] ?? ''));
         $password = (string)($data['account_password'] ?? '');
 
-        // 何も入力が無ければスキップ
+        // 何も入力がなければスキップ
         if ($email === '' && $password === '') {
             return;
         }
         if ($email === '') {
-            // メールなしでパスワードだけ入ったケースはスキップ
+            // メールなしでパスワードだけは無効
             return;
         }
 
         // 既存ユーザーがいれば更新、いなければ作成
         $user = User::firstOrNew(['email' => $email]);
+
         if (! $user->exists) {
-            $user->name = $company->name; // とりあえず会社名を表示名に
+            $user->name     = $company->name; // 表示名は会社名に
             $user->password = bcrypt($password !== '' ? $password : str()->random(16));
         } else {
             if ($password !== '') {
                 $user->password = bcrypt($password);
             }
         }
-        // 役割があれば company に
+
+        // --- ロール付与を確実に ---
+        // Spatie Roles を使っていれば assignRole、そうでなければ role カラムを直接更新
         if (method_exists($user, 'assignRole')) {
-            $user->assignRole('company');
-        } elseif (property_exists($user, 'role') && empty($user->role)) {
+            // すでに別ロールが付いていても company ロールを付与（重複はライブラリ側で面倒みる）
+            try { $user->assignRole('company'); } catch (\Throwable $e) { /* ignore */ }
+        }
+        // role カラムがある場合は必ず company に上書き（enduser で作られていた事故を是正）
+        if (property_exists($user, 'role') || \Illuminate\Support\Arr::has($user->getAttributes(), 'role')) {
             $user->role = 'company';
         }
+
         $user->save();
 
-        // 会社に紐付け（多対多を想定）
+        // 会社に紐付け（多対多想定）
         if (method_exists($company, 'users')) {
             if (! $company->users()->where('users.id', $user->id)->exists()) {
                 $company->users()->attach($user->id);
             }
+        } elseif (isset($company->user_id)) {
+            // 単一オーナー型のとき
+            $company->user_id = $user->id;
+            $company->save();
         }
     }
 

@@ -8,8 +8,9 @@ use Illuminate\Http\Request;
 // Top / Front
 use App\Http\Controllers\Front\LandingController;
 use App\Http\Controllers\Front\CompanyController as FCompanyController;
-use App\Http\Controllers\Front\JobController as FrontJobController;
 use App\Http\Controllers\Front\ApplicationController;
+use App\Http\Controllers\Front\FrontJobController;
+
 
 // Admin
 use App\Http\Controllers\Admin\PostController;
@@ -58,6 +59,24 @@ Route::get('/jobs/{slugOrId}', fn (string $slugOrId) => redirect("/recruit_jobs/
     ->where('slugOrId', '^([A-Za-z0-9\-]+|\d+)$');
 Route::permanentRedirect('/jobs', '/recruit_jobs');
 
+// ===== ★ ログイン前に intended を明示セットする専用ルート =====
+// 例: /login-intended?redirect=https://dousoko.com/recruit_jobs/xxx/apply でも
+//     /login-intended?redirect=https://dousoko.com/recruit_jobs/xxx?apply=1 でもOK
+Route::get('/login-intended', function (Request $request) {
+    if ($to = $request->query('redirect')) {
+        session(['url.intended' => $to]);
+    }
+    return redirect()->route('login');
+})->name('login.intended');
+
+// ===== ★ 新規登録前にも intended を明示セットする専用ルート =====
+Route::get('/register-intended', function (Request $request) {
+    if ($to = $request->query('redirect')) {
+        session(['url.intended' => $to]);
+    }
+    return redirect()->route('register');
+})->name('register.intended');
+
 // ===== Front: Company =====
 Route::prefix('company')->name('front.company.')->group(function () {
     Route::get('/', [FCompanyController::class, 'index'])->name('index');
@@ -68,20 +87,43 @@ Route::prefix('company')->name('front.company.')->group(function () {
 
 // ===== Front: Jobs =====
 Route::prefix('recruit_jobs')->group(function () {
+
+    // ★ 企業ユーザー専用（静的ルートを先に置く）
+    Route::middleware(['auth:web', 'role:company'])->group(function () {
+        Route::get   ('/create',      [FrontJobController::class, 'create'])->name('front.jobs.create');
+        Route::post  ('/',            [FrontJobController::class, 'store'])->name('front.jobs.store');
+        Route::get   ('/{job}/edit',  [FrontJobController::class, 'edit'])->whereNumber('job')->name('front.jobs.edit');
+        Route::patch ('/{job}',       [FrontJobController::class, 'update'])->whereNumber('job')->name('front.jobs.update');
+        Route::delete('/{job}',       [FrontJobController::class, 'destroy'])->whereNumber('job')->name('front.jobs.destroy');
+    });
+
+    // 応募（エンドユーザー専用／POST本体）
     Route::post('/{job:slug}/apply', [ApplicationController::class, 'store'])
         ->middleware(['auth:web', 'role:enduser'])
         ->name('front.jobs.apply');
 
-    Route::get('/', [FrontJobController::class, 'index'])->name('front.jobs.index');
-    Route::get('/{slugOrId}', [FrontJobController::class, 'show'])
-        ->where('slugOrId', '^([A-Za-z0-9\-]+|\d+)$')
-        ->name('front.jobs.show');
+    // ★ 応募ゲート（GET）
+    //    → 認証必須のみ（roleは外す）。認証後は求人詳細へ戻す。
+    Route::get('/{job:slug}/apply', function (\App\Models\Job $job) {
+        return redirect()->route('front.jobs.show', $job->slug)->with('apply_intent', true);
+    })
+    ->middleware(['auth:web'])
+    ->name('front.jobs.apply.gate');
 
+    // お気に入り（エンドユーザー専用）
     Route::middleware(['auth:web', 'role:enduser'])->group(function () {
-        Route::post('/{job}/favorite',        [FavoriteController::class, 'store'])->whereNumber('job')->name('favorites.store');
-        Route::delete('/{job}/favorite',      [FavoriteController::class, 'destroy'])->whereNumber('job')->name('favorites.destroy');
-        Route::post('/{job}/favorite/toggle', [FavoriteController::class, 'toggle'])->whereNumber('job')->name('favorites.toggle');
+        Route::post   ('/{job}/favorite',        [FavoriteController::class, 'store'])->whereNumber('job')->name('favorites.store');
+        Route::delete ('/{job}/favorite',        [FavoriteController::class, 'destroy'])->whereNumber('job')->name('favorites.destroy');
+        Route::post   ('/{job}/favorite/toggle', [FavoriteController::class, 'toggle'])->whereNumber('job')->name('favorites.toggle');
     });
+
+    // 一覧（公開）
+    Route::get('/', [FrontJobController::class, 'index'])->name('front.jobs.index');
+
+    // ★ 動的ルートは最後。create を除外して衝突回避
+    Route::get('/{slugOrId}', [FrontJobController::class, 'show'])
+        ->where('slugOrId', '^(?!create$)([A-Za-z0-9\-]+|\d+)$')
+        ->name('front.jobs.show');
 });
 
 /* ===== MYPAGE（エンドユーザーのみ） ===== */
@@ -106,9 +148,16 @@ Route::middleware(['auth:web', 'role:company'])->prefix('users')->name('users.')
 });
 
 /* ===== Dashboard（一般ログイン専用：admin では入れない） ===== */
-Route::view('/dashboard', 'dashboard')
-    ->middleware(['auth:web', 'role:enduser,company'])
-    ->name('dashboard');
+// ★ ここで intended が残っていればダッシュボードではなく優先的にそこへ飛ばす
+Route::get('/dashboard', function () {
+    if (session()->has('url.intended')) {
+        $to = session('url.intended');
+        session()->forget('url.intended');
+        return redirect()->to($to);
+    }
+    return view('dashboard');
+})->middleware(['auth:web', 'role:enduser,company'])
+  ->name('dashboard');
 
 /* ------------------------------------------------------------------
 | Admin（auth:admin）
@@ -116,10 +165,9 @@ Route::view('/dashboard', 'dashboard')
 Route::prefix('admin')->middleware(['auth:admin'])->name('admin.')->group(function () {
 
     // ✅ Bladeの /admin/posts ルートは削除（Filament に任せる）
-    //    もし旧リンク互換が必要なら、別パスのエイリアスだけ用意（任意）
     Route::get('__alias/filament-posts', fn () =>
         redirect(PostResource::getUrl('index', panel: 'admin'))
-    )->name('posts.index'); // 旧: route('admin.posts.index') をここに寄せてもOK
+    )->name('posts.index');
 
     Route::get('__alias/filament-posts/create', fn () =>
         redirect(PostResource::getUrl('create', panel: 'admin'))

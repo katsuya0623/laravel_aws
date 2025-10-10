@@ -1,141 +1,143 @@
-
 @extends('front.layout')
 
 @section('title','求人一覧')
 
-
-
-@section('toolbar')
-
-  <form method="GET" action="{{ route('front.jobs.index') }}" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-
-    <input type="search" name="q" value="{{ $q ?? '' }}" placeholder="キーワード（スペースでAND）"
-
-           style="flex:1; min-width:240px; padding:6px 10px; border:1px solid #e5e7eb; border-radius:8px;">
-
-    <select name="status" style="padding:6px 10px; border:1px solid #e5e7eb; border-radius:8px;">
-
-      <option value="">すべて</option>
-
-      <option value="published" @selected(($status ?? '')==='published')>published</option>
-
-      <option value="draft" @selected(($status ?? '')==='draft')>draft</option>
-
-    </select>
-
-    <button style="padding:6px 12px; border:1px solid #e5e7eb; border-radius:8px; background:#f9fafb;">検索</button>
-
-    <a href="{{ route('front.jobs.index') }}" style="padding:6px 12px; border:1px solid #e5e7eb; border-radius:8px;">クリア</a>
-
-    @auth
-
-      <a href="{{ route('admin.jobs.index') }}" style="margin-left:8px; padding:6px 12px; background:#111827; color:#fff; border-radius:8px; text-decoration:none;">
-
-        管理の「求人一覧」へ
-
-      </a>
-
-    @endauth
-
-  </form>
-
-@endsection
-
-
-
 @section('content')
+<style>
+/* ====== layout ====== */
+.jobs-wrap{max-width:1060px;margin:24px auto;display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:20px}
+@media (max-width: 1000px){.jobs-wrap{grid-template-columns:1fr}}
+.card{border:1px solid #e5e7eb;border-radius:12px;background:#fff}
+.shadow{box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.section-h{font-weight:700;margin:0 0 10px}
+.muted{color:#6b7280}
+.badge{display:inline-flex;gap:6px;align-items:center;border:1px solid #e5e7eb;border-radius:999px;padding:.25rem .6rem;background:#f9fafb;font-size:12px}
+.btn{display:inline-flex;align-items:center;gap:.4rem;border:1px solid #e5e7eb;border-radius:8px;padding:.5rem .8rem;background:#111827;color:#fff;text-decoration:none}
+.btn.secondary{background:#fff;color:#111827}
+.input,.select,textarea{width:100%;border:1px solid #e5e7eb;border-radius:8px;padding:.55rem .7rem}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap}
+.toolbar .input{min-width:260px;flex:1}
+.list{display:grid;gap:12px}
+.meta{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:#6b7280}
+.item{display:flex;gap:12px;padding:12px;border-radius:12px}
+.thumb{width:68px;height:68px;border:1px solid #e5e7eb;border-radius:10px;background:#f8fafc;display:grid;place-items:center;flex-shrink:0}
+.thumb span{font-size:11px;color:#94a3b8}
+.item-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.item-title{font-weight:700;color:#111827;text-decoration:none}
+.item-desc{color:#475569;line-height:1.6;margin-top:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.item-foot{display:flex;justify-content:space-between;align-items:center;margin-top:10px}
+.sidebar .box{padding:12px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chips a{font-size:12px;text-decoration:none}
+.pag{margin-top:16px}
+</style>
 
-  <h1 style="font-size:20px; font-weight:700; margin:0 0 12px;">求人一覧</h1>
+<div class="jobs-wrap">
 
+  {{-- ===== Left: List ===== --}}
+  <div>
 
-
-  @if(isset($jobs) && $jobs->count() === 0)
-
-    <p style="color:#6b7280;">該当する求人はありません。</p>
-
-  @elseif(isset($jobs))
-
-    <ul style="list-style:none; margin:0; padding:0; display:grid; gap:12px;">
-
-      @foreach($jobs as $job)
-
-        @php
-
-          $statusText = $job->status ?? '';
-
-          $slug       = $job->slug ?? $job->id;
-
-          $detailUrl  = url('/jobs/'.$slug); // 詳細は後で実装
-
-        @endphp
-
-
-
-        <li style="border:1px solid #e5e7eb; border-radius:10px; padding:12px;">
-
-          <div style="display:flex; gap:12px; align-items:flex-start;">
-
-            <div style="width:72px; height:72px; border:1px solid #e5e7eb; border-radius:8px; display:grid; place-items:center; background:#f8fafc; flex-shrink:0;">
-
-              <span style="color:#94a3b8; font-size:12px;">NO IMAGE</span>
-
-            </div>
-
-            <div style="flex:1;">
-
-              <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-
-                <a href="{{ $detailUrl }}" style="font-weight:700; color:#111827; text-decoration:none;">
-
-                  {{ $job->title ?? '(無題)' }}
-
-                </a>
-
-                @if($statusText !== '')
-
-                  <span style="padding:2px 8px; font-size:12px; border:1px solid #e5e7eb; border-radius:999px; background:#f9fafb;">
-
-                    {{ $statusText }}
-
-                  </span>
-
-                @endif
-
-              </div>
-
-              <div style="margin-top:6px; color:#6b7280; font-size:12px;">
-
-                <span>slug: /jobs/{{ $slug }}</span>
-
-              </div>
-
-              @auth
-
-                <div style="margin-top:6px; font-size:12px;">
-
-                  <a href="{{ route('admin.jobs.index') }}" style="color:#4f46e5;">（管理）求人一覧へ</a>
-
-                </div>
-
-              @endauth
-
-            </div>
-
-          </div>
-
-        </li>
-
-      @endforeach
-
-    </ul>
-
-    <div style="margin-top:16px;">
-
-      {{ $jobs->links() }}
-
+    {{-- 検索ツールバー --}}
+    <div class="card shadow" style="padding:12px;margin-bottom:12px;">
+      <form method="GET" action="{{ route('front.jobs.index') }}" class="toolbar">
+        <input class="input" type="search" name="q" value="{{ $q ?? '' }}" placeholder="キーワード（スペースでAND）">
+        <select class="select" name="status">
+          <option value="">ステータス: すべて</option>
+          <option value="published" @selected(($status ?? '')==='published')>published</option>
+          <option value="draft"     @selected(($status ?? '')==='draft')>draft</option>
+        </select>
+        <button class="btn" type="submit">検索</button>
+        <a class="btn secondary" href="{{ route('front.jobs.index') }}">クリア</a>
+        @auth
+          <a class="btn" href="{{ route('front.jobs.create') }}">＋ 新規作成</a>
+        @endauth
+      </form>
     </div>
 
-  @endif
+    {{-- リスト --}}
+    @if(isset($jobs) && $jobs->count())
+      <div class="list">
+        @foreach($jobs as $job)
+          @php
+            $slug  = $job->slug ?? $job->id;
+            $url   = route('front.jobs.show', $slug);
+            $date  = optional($job->created_at)->format('Y-m-d');
+            $salary = null;
+            if(!empty($job->salary_from) || !empty($job->salary_to)){
+              $salary = trim(($job->salary_from ? number_format($job->salary_from) : '').'〜'.($job->salary_to ? number_format($job->salary_to) : ''))
+                        .' '.($job->salary_unit ?? '');
+            }
+          @endphp
 
+          <article class="card shadow item">
+            <a class="thumb" href="{{ $url }}"><span>NO<br>IMG</span></a>
+
+            <div style="flex:1;">
+              <div class="item-head">
+                <a class="item-title" href="{{ $url }}">{{ $job->title ?? '(無題)' }}</a>
+                @if(!empty($job->employment_type))
+                  <span class="badge">{{ $job->employment_type }}</span>
+                @endif
+                @if(!empty($job->status))
+                  <span class="badge">{{ $job->status }}</span>
+                @endif>
+              </div>
+
+              <div class="meta" style="margin-top:6px;">
+                @if(!empty($job->company_name))<span>{{ $job->company_name }}</span>@endif
+                @if(!empty($job->location))<span>📍 {{ $job->location }}</span>@endif
+                @if($salary)<span>💰 {{ $salary }}</span>@endif
+                @if(!empty($job->work_style))<span>🏠 {{ $job->work_style }}</span>@endif
+              </div>
+
+              @if(!empty($job->description))
+                <p class="item-desc">{{ strip_tags($job->description) }}</p>
+              @endif
+
+              <div class="item-foot">
+                <div class="muted">投稿日: {{ $date ?? '-' }}</div>
+                <div style="display:flex;gap:8px;">
+                  @if(!empty($job->apply_url))
+                    <a class="btn secondary" href="{{ $job->apply_url }}" target="_blank" rel="noopener">応募ページ</a>
+                  @endif
+                  <a class="btn" href="{{ $url }}">詳細を見る</a>
+                </div>
+              </div>
+            </div>
+          </article>
+        @endforeach
+      </div>
+
+      <div class="pag">
+        {{ $jobs->links() }}
+      </div>
+    @else
+      <div class="card shadow" style="padding:16px;">
+        <p class="muted">該当する求人はありません。</p>
+      </div>
+    @endif
+  </div>
+
+  {{-- ===== Right: Sidebar ===== --}}
+  <aside class="sidebar">
+    <div class="card shadow box">
+      <h3 class="section-h">タグ</h3>
+      <div class="chips">
+        {{-- タグ機能がまだ無い前提でダミー。実装済みなら置き換えてください --}}
+        @foreach(['#リモート可','#急募','#未経験可','#フレックス'] as $tag)
+          <a class="badge" href="?q={{ urlencode(trim($tag,'#')) }}">{{ $tag }}</a>
+        @endforeach
+      </div>
+    </div>
+
+    <div class="card shadow box" style="margin-top:12px;">
+      <h3 class="section-h">クイックリンク</h3>
+      <ul style="margin:0;padding-left:1rem;line-height:1.9;">
+        <li><a href="{{ route('front.jobs.index',['status'=>'published']) }}">公開中のみ</a></li>
+        <li><a href="{{ route('front.company.index') }}">企業一覧</a></li>
+      </ul>
+    </div>
+  </aside>
+
+</div>
 @endsection
-
