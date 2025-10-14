@@ -4,6 +4,13 @@ module.exports = {
     './resources/**/*.js',
     './storage/framework/views/*.php'
   ],
-  theme: { extend: {} },
-  plugins: [],
+  theme: {
+    extend: {},
+  },
+  plugins: [
+    require('daisyui'),   // ★ ここ追加！
+  ],
+  daisyui: {
+    themes: ['light', 'dark'], // 好きなテーマ（corporate, retro, synthwave 等も可）
+  },
 }

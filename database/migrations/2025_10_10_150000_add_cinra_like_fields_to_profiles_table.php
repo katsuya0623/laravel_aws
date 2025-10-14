@@ -1,6 +1,5 @@
 <?php
 
-// database/migrations/2025_10_10_150000_add_cinra_like_fields_to_profiles_table.php
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -16,27 +15,27 @@ return new class extends Migration {
             $table->string('first_name_kana')->nullable()->after('last_name_kana');
 
             // 基本
-            $table->string('gender', 20)->nullable()->after('first_name_kana'); // male/female/other/no_answer
+            $table->string('gender', 20)->nullable()->after('first_name_kana');
             $table->string('phone', 50)->nullable()->after('gender');
 
             // 住所
             $table->string('postal_code', 16)->nullable()->after('location');
             $table->string('prefecture')->nullable()->after('postal_code');
             $table->string('city')->nullable()->after('prefecture');
-            $table->string('address1')->nullable()->after('city');  // 番地等
-            $table->string('address2')->nullable()->after('address1'); // 建物等
+            $table->string('address1')->nullable()->after('city');
+            $table->string('address2')->nullable()->after('address1');
             $table->string('nearest_station')->nullable()->after('address2');
 
             // URL / SNS
             $table->string('portfolio_url')->nullable()->after('website_url');
-            $table->string('sns_x')->nullable()->after('x_url');             // ハンドル or URL
+            $table->string('sns_x')->nullable()->after('x_url');
             $table->string('sns_instagram')->nullable()->after('instagram_url');
 
             // JSON ブロック
-            $table->json('educations')->nullable()->after('birthday');      // [{school,faculty,department,period_from,period_to,status}]
-            $table->json('work_histories')->nullable()->after('educations');// [{company,from,to,employment_type,dept,position,tasks,achievements}]
-            $table->json('skills')->nullable()->after('work_histories');    // ["Photoshop","Figma",...]
-            $table->json('desired')->nullable()->after('skills');           // {positions:[],employment_types:[],locations:[],salary_min,available_from,remarks}
+            $table->json('educations')->nullable()->after('birthday');
+            $table->json('work_histories')->nullable()->after('educations');
+            $table->json('skills')->nullable()->after('work_histories');
+            $table->json('desired')->nullable()->after('skills');
         });
     }
 

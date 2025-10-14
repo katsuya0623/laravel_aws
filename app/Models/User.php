@@ -11,6 +11,9 @@ use Illuminate\Notifications\Notifiable;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 
+// ★ 追加：プロフィール自動作成で使用
+use App\Models\Profile;
+
 class User extends Authenticatable implements FilamentUser
 {
     use HasFactory, Notifiable;
@@ -18,8 +21,6 @@ class User extends Authenticatable implements FilamentUser
 
     /**
      * まとめて代入可能な属性
-     * ※ 管理画面から role を更新する運用なら 'role' を含める
-     *   もし厳密に守るなら 'role' は含めず、コントローラで $user->role=... と代入して save()
      */
     protected $fillable = [
         'name',
@@ -42,8 +43,21 @@ class User extends Authenticatable implements FilamentUser
     protected $casts = [
         'email_verified_at' => 'datetime',
         'password'          => 'hashed', // ← 保存時に自動でハッシュ
-        // 'is_active' => 'boolean',     // users に列があれば有効化
+        // 'is_active' => 'boolean',
     ];
+
+    /**
+     * ★ ユーザー作成時に必ず空のプロフィールを作成
+     *   冪等にしてあるので再実行しても安全
+     */
+    protected static function booted(): void
+    {
+        static::created(function (User $user) {
+            if (! $user->profile()->exists()) {
+                $user->profile()->create([]); // 空でOK（編集画面で埋める）
+            }
+        });
+    }
 
     /* ========================
        リレーション
@@ -52,7 +66,7 @@ class User extends Authenticatable implements FilamentUser
     /** プロフィール（1:1） */
     public function profile()
     {
-        return $this->hasOne(\App\Models\Profile::class);
+        return $this->hasOne(Profile::class);
     }
 
     /** お気に入り求人（多対多） pivot: favorites(user_id, job_id) */
@@ -82,7 +96,6 @@ class User extends Authenticatable implements FilamentUser
     public function isCompany(): bool { return ($this->role ?? null) === 'company'; }
     public function isEnduser(): bool { return ($this->role ?? null) === 'enduser' || ($this->role ?? null) === null; }
 
-    // 役割スコープ（必要なら）
     public function scopeAdmins($q)   { return $q->where('role', 'admin'); }
     public function scopeCompanies($q){ return $q->where('role', 'company'); }
     public function scopeEndusers($q) { return $q->where(function($qq){

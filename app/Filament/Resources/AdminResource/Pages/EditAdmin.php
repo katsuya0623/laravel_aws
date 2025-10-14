@@ -14,7 +14,7 @@ class EditAdmin extends EditRecord
     // 画面タイトル
     protected static ?string $title = '管理者の編集';
 
-    // 更新後の通知（任意）
+    // 更新後の通知
     protected function getSavedNotification(): ?Notification
     {
         return Notification::make()
@@ -27,7 +27,7 @@ class EditAdmin extends EditRecord
         return $this->getResource()::getUrl('index');
     }
 
-    // 右上のアクション（削除/一覧へ）などのラベル
+    // 右上（ヘッダー）のアクション
     protected function getHeaderActions(): array
     {
         return [
@@ -35,11 +35,20 @@ class EditAdmin extends EditRecord
         ];
     }
 
+    // フォーム下部のアクション（保存 / 一覧へ戻る）
     protected function getFormActions(): array
     {
         return [
-            Actions\SaveAction::make()->label('保存'),
-            Actions\CancelAction::make()->label('一覧へ戻る'),
+            // SaveAction の代替：フォームを submit させる汎用アクション
+            Actions\Action::make('save')
+                ->label('保存')
+                ->submit('save'),
+
+            // CancelAction の代替：一覧へ戻る汎用アクション
+            Actions\Action::make('cancel')
+                ->label('一覧へ戻る')
+                ->url(static::getResource()::getUrl('index'))
+                ->color('gray'),
         ];
     }
 }
