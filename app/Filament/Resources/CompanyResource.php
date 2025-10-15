@@ -13,11 +13,10 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Tables\Columns\TextColumn;
-
-// 追加: 行/ヘッダー アクション（作成・編集・削除）
 use Filament\Tables\Actions\CreateAction;
 use Filament\Tables\Actions\EditAction;
 use Filament\Tables\Actions\DeleteAction;
+use Illuminate\Support\Facades\Hash;
 
 class CompanyResource extends Resource
 {
@@ -40,7 +39,6 @@ class CompanyResource extends Resource
                     ->columnSpanFull(),
             ]),
 
-            // ▼ 会社ログイン用アカウント（任意入力）
             Fieldset::make('ログインアカウント（任意）')
                 ->columns(2)
                 ->schema([
@@ -48,8 +46,9 @@ class CompanyResource extends Resource
                         ->label('メールアドレス')
                         ->email()
                         ->helperText('入力すると、このメールで会社用ユーザーを作成/更新して会社に紐付けます。')
-                        ->dehydrated(false) // Companyテーブルには保存しない
-                        ->required(fn (string $context) => $context === 'create'), // 新規作成時だけ必須
+                        ->dehydrated(false)
+                        ->required(fn (string $context) => $context === 'create'),
+
                     TextInput::make('account_password')
                         ->label('パスワード')
                         ->password()
@@ -73,7 +72,6 @@ class CompanyResource extends Resource
             ])
             ->defaultSort('id', 'desc')
 
-            // ★ 一覧ヘッダーの「新規作成」アクションにも after フックを追加
             ->headerActions([
                 CreateAction::make()
                     ->after(function (Company $record, array $data) {
@@ -81,9 +79,7 @@ class CompanyResource extends Resource
                     }),
             ])
 
-            // 行アクション
             ->actions([
-                // 編集後にユーザー作成/紐付けを走らせる
                 EditAction::make()
                     ->after(function (Company $record, array $data) {
                         self::upsertCompanyAccount($record, $data);
@@ -103,15 +99,15 @@ class CompanyResource extends Resource
      */
     public static function upsertCompanyAccount(Company $company, array $data): void
     {
-        $email    = trim((string)($data['account_email'] ?? ''));
-        $password = (string)($data['account_password'] ?? '');
+        // ▼ フォームデータ or リクエストからメール/パスワードを取得
+        $email    = trim((string)($data['account_email'] ?? request()->input('account_email', '')));
+        $password = (string)($data['account_password'] ?? request()->input('account_password', ''));
 
         // 何も入力がなければスキップ
         if ($email === '' && $password === '') {
             return;
         }
         if ($email === '') {
-            // メールなしでパスワードだけは無効
             return;
         }
 
@@ -119,34 +115,31 @@ class CompanyResource extends Resource
         $user = User::firstOrNew(['email' => $email]);
 
         if (! $user->exists) {
-            $user->name     = $company->name; // 表示名は会社名に
-            $user->password = bcrypt($password !== '' ? $password : str()->random(16));
+            $user->name = $company->name;
+            $user->password = Hash::make($password !== '' ? $password : str()->random(16));
         } else {
             if ($password !== '') {
-                $user->password = bcrypt($password);
+                $user->password = Hash::make($password);
             }
         }
 
         // --- ロール付与を確実に ---
-        // Spatie Roles を使っていれば assignRole、そうでなければ role カラムを直接更新
         if (method_exists($user, 'assignRole')) {
-            // すでに別ロールが付いていても company ロールを付与（重複はライブラリ側で面倒みる）
             try { $user->assignRole('company'); } catch (\Throwable $e) { /* ignore */ }
         }
-        // role カラムがある場合は必ず company に上書き（enduser で作られていた事故を是正）
-        if (property_exists($user, 'role') || \Illuminate\Support\Arr::has($user->getAttributes(), 'role')) {
-            $user->role = 'company';
-        }
+
+        $user->role = 'company';
+        $user->is_active = true;
+        // $user->email_verified_at = now(); // メール認証をスキップしたい場合はコメント解除
 
         $user->save();
 
-        // 会社に紐付け（多対多想定）
+        // --- 会社との紐付け ---
         if (method_exists($company, 'users')) {
             if (! $company->users()->where('users.id', $user->id)->exists()) {
                 $company->users()->attach($user->id);
             }
         } elseif (isset($company->user_id)) {
-            // 単一オーナー型のとき
             $company->user_id = $user->id;
             $company->save();
         }

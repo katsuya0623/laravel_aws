@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
+use Illuminate\Support\Arr;
 
 class ProfileController extends Controller
 {
@@ -38,7 +39,8 @@ class ProfileController extends Controller
     }
 
     /**
-     * 更新
+     * 互換：単一update（既存導線のため残置）
+     * 今後は分割エンドポイントを利用してください。
      */
     public function update(ProfileUpdateRequest $request): RedirectResponse
     {
@@ -73,8 +75,6 @@ class ProfileController extends Controller
             'positions'        => array_values($request->input('desired.positions', [])),
             'employment_types' => array_values($request->input('desired.employment_types', [])),
             'locations'        => array_values($request->input('desired.locations', [])),
-
-            // 新規：第一/第二希望 & 希望時期
             'first_choice'     => [
                 'position' => $request->input('desired.first_choice.position'),
                 'location' => $request->input('desired.first_choice.location'),
@@ -84,8 +84,6 @@ class ProfileController extends Controller
                 'location' => $request->input('desired.second_choice.location'),
             ],
             'hope_timing'      => $request->input('desired.hope_timing'),
-
-            // 既存
             'salary_min'       => $request->input('desired.salary_min'),
             'available_from'   => $request->input('desired.available_from'),
             'remarks'          => $request->input('desired.remarks'),
@@ -144,6 +142,132 @@ class ProfileController extends Controller
         ])->save();
 
         return Redirect::route('profile.edit')->with('status', 'profile-updated');
+    }
+
+    /**
+     * ===== ここから分割更新メソッド =====
+     */
+
+    /** 基本情報のみ更新（他のJSONは触らない） */
+    public function updateBasics(Request $request): RedirectResponse
+    {
+        $user = $request->user();
+
+        // usersテーブル
+        $validatedUser = $request->validate([
+            'name'  => ['required','string','max:255'],
+            'email' => ['required','email','max:255'],
+        ]);
+        $user->fill($validatedUser);
+        if ($user->isDirty('email')) {
+            $user->email_verified_at = null;
+        }
+        $user->save();
+
+        // profileテーブル
+        $validated = $request->validate([
+            'last_name'        => ['nullable','string','max:255'],
+            'first_name'       => ['nullable','string','max:255'],
+            'last_name_kana'   => ['nullable','string','max:255'],
+            'first_name_kana'  => ['nullable','string','max:255'],
+            'gender'           => ['nullable','in:no_answer,male,female,other'],
+            'birthday'         => ['nullable','date'],
+            'phone'            => ['nullable','string','max:255'],
+            'postal_code'      => ['nullable','string','max:20'],
+            'prefecture'       => ['nullable','string','max:20'],
+            'city'             => ['nullable','string','max:255'],
+            'address1'         => ['nullable','string','max:255'],
+            'address2'         => ['nullable','string','max:255'],
+            'nearest_station'  => ['nullable','string','max:255'],
+            'portfolio_url'    => ['nullable','url','max:255'],
+            'website_url'      => ['nullable','url','max:255'],
+            'sns_x'            => ['nullable','string','max:255'],
+            'sns_instagram'    => ['nullable','string','max:255'],
+            'bio'              => ['nullable','string'],
+            'avatar'           => ['nullable','image','max:5120'],
+        ]);
+
+        $profile = $user->profile()->firstOrCreate([]);
+        $profile->fill(Arr::except($validated, ['avatar']));
+
+        if ($request->hasFile('avatar')) {
+            if ($profile->avatar_path && Storage::disk('public')->exists($profile->avatar_path)) {
+                Storage::disk('public')->delete($profile->avatar_path);
+            }
+            $profile->avatar_path = $request->file('avatar')->store('avatars','public');
+        }
+
+        $profile->save();
+
+        return back()->with('status','profile-updated');
+    }
+
+    /** 学歴のみ更新（他は触らない） */
+    public function updateEducations(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'educations'                  => ['required','array'],
+            'educations.*.school'         => ['nullable','string','max:255'],
+            'educations.*.faculty'        => ['nullable','string','max:255'],
+            'educations.*.department'     => ['nullable','string','max:255'],
+            'educations.*.status'         => ['nullable','string','max:50'],
+            'educations.*.period_from'    => ['nullable','date'],
+            'educations.*.period_to'      => ['nullable','date'],
+        ]);
+
+        $profile = $request->user()->profile()->firstOrCreate([]);
+        $profile->educations = array_values($validated['educations']);
+        $profile->save();
+
+        return back()->with('status','profile-updated');
+    }
+
+    /** 職歴のみ更新（他は触らない） */
+    public function updateWorks(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'work_histories'                    => ['required','array'],
+            'work_histories.*.company'          => ['nullable','string','max:255'],
+            'work_histories.*.from'             => ['nullable','date'],
+            'work_histories.*.to'               => ['nullable','date'],
+            'work_histories.*.employment_type'  => ['nullable','string','max:100'],
+            'work_histories.*.dept'             => ['nullable','string','max:255'],
+            'work_histories.*.position'         => ['nullable','string','max:255'],
+            'work_histories.*.tasks'            => ['nullable','string'],
+            'work_histories.*.achievements'     => ['nullable','string'],
+        ]);
+
+        $profile = $request->user()->profile()->firstOrCreate([]);
+        $profile->work_histories = array_values($validated['work_histories']);
+        $profile->save();
+
+        return back()->with('status','profile-updated');
+    }
+
+    /** 希望条件のみ更新（他は触らない） */
+    public function updateDesired(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'desired'                           => ['required','array'],
+            'desired.positions'                 => ['nullable','array'],
+            'desired.locations'                 => ['nullable','array'],
+            'desired.employment_types'          => ['nullable','array'],
+            'desired.first_choice.position'     => ['nullable','string','max:100'],
+            'desired.first_choice.location'     => ['nullable','string','max:100'],
+            'desired.second_choice.position'    => ['nullable','string','max:100'],
+            'desired.second_choice.location'    => ['nullable','string','max:100'],
+            'desired.hope_timing'               => ['nullable','string','max:50'],
+            'desired.available_from'            => ['nullable','date'],
+            'desired.salary_min'                => ['nullable','integer','min:0'],
+            'desired.remarks'                   => ['nullable','string'],
+        ]);
+
+        $profile = $request->user()->profile()->firstOrCreate([]);
+        // 空配列上書きも許可したい場合は hidden ダミーをBlade側に置いてキー送信させる
+        $profile->desired = $validated['desired'] ?? [];
+        $profile->save();
+
+        return back()->with('status','profile-updated');
     }
 
     /**

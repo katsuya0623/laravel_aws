@@ -11,7 +11,6 @@ use App\Http\Controllers\Front\CompanyController as FCompanyController;
 use App\Http\Controllers\Front\ApplicationController;
 use App\Http\Controllers\Front\FrontJobController;
 
-
 // Admin
 use App\Http\Controllers\Admin\PostController;
 use App\Http\Controllers\Admin\ApplicationsController;
@@ -55,13 +54,11 @@ Route::permanentRedirect('/companys',        '/company');
 Route::permanentRedirect('/companies',       '/company');
 
 // 旧 /jobs/{slugOrId} → 新 /recruit_jobs/{slugOrId}
-Route::get('/jobs/{slugOrId}', fn (string $slugOrId) => redirect("/recruit_jobs/{$slugOrId}", 301))
+Route::get('/jobs/{slugOrId}', fn(string $slugOrId) => redirect("/recruit_jobs/{$slugOrId}", 301))
     ->where('slugOrId', '^([A-Za-z0-9\-]+|\d+)$');
 Route::permanentRedirect('/jobs', '/recruit_jobs');
 
 // ===== ★ ログイン前に intended を明示セットする専用ルート =====
-// 例: /login-intended?redirect=https://dousoko.com/recruit_jobs/xxx/apply でも
-//     /login-intended?redirect=https://dousoko.com/recruit_jobs/xxx?apply=1 でもOK
 Route::get('/login-intended', function (Request $request) {
     if ($to = $request->query('redirect')) {
         session(['url.intended' => $to]);
@@ -90,12 +87,18 @@ Route::prefix('recruit_jobs')->group(function () {
 
     // ★ 企業ユーザー専用（静的ルートを先に置く）
     Route::middleware(['auth:web', 'role:company'])->group(function () {
-        Route::get   ('/create',      [FrontJobController::class, 'create'])->name('front.jobs.create');
-        Route::post  ('/',            [FrontJobController::class, 'store'])->name('front.jobs.store');
-        Route::get   ('/{job}/edit',  [FrontJobController::class, 'edit'])->whereNumber('job')->name('front.jobs.edit');
-        Route::patch ('/{job}',       [FrontJobController::class, 'update'])->whereNumber('job')->name('front.jobs.update');
+        Route::get('/create',      [FrontJobController::class, 'create'])->name('front.jobs.create');
+        Route::post('/',            [FrontJobController::class, 'store'])->name('front.jobs.store');
+        Route::get('/{job}/edit',  [FrontJobController::class, 'edit'])->whereNumber('job')->name('front.jobs.edit');
+        Route::patch('/{job}',       [FrontJobController::class, 'update'])->whereNumber('job')->name('front.jobs.update');
         Route::delete('/{job}',       [FrontJobController::class, 'destroy'])->whereNumber('job')->name('front.jobs.destroy');
     });
+
+    // ★お気に入り→応募へ（ゲスト/ログイン両対応の入口）
+    //   slug または id のどちらでも受けられるようにしておく
+    Route::post('/{slugOrId}/favorite-apply', [FavoriteController::class, 'favoriteAndApply'])
+        ->where('slugOrId', '^([A-Za-z0-9\-]+|\d+)$')
+        ->name('front.jobs.favorite_apply');
 
     // 応募（エンドユーザー専用／POST本体）
     Route::post('/{job:slug}/apply', [ApplicationController::class, 'store'])
@@ -103,18 +106,19 @@ Route::prefix('recruit_jobs')->group(function () {
         ->name('front.jobs.apply');
 
     // ★ 応募ゲート（GET）
-    //    → 認証必須のみ（roleは外す）。認証後は求人詳細へ戻す。
     Route::get('/{job:slug}/apply', function (\App\Models\Job $job) {
         return redirect()->route('front.jobs.show', $job->slug)->with('apply_intent', true);
     })
-    ->middleware(['auth:web'])
-    ->name('front.jobs.apply.gate');
+        // ここを 'autofavorite' → クラス名指定に変更
+        ->middleware(['auth:web', \App\Http\Middleware\AutoFavorite::class])
+        ->name('front.jobs.apply.gate');
+
 
     // お気に入り（エンドユーザー専用）
     Route::middleware(['auth:web', 'role:enduser'])->group(function () {
-        Route::post   ('/{job}/favorite',        [FavoriteController::class, 'store'])->whereNumber('job')->name('favorites.store');
-        Route::delete ('/{job}/favorite',        [FavoriteController::class, 'destroy'])->whereNumber('job')->name('favorites.destroy');
-        Route::post   ('/{job}/favorite/toggle', [FavoriteController::class, 'toggle'])->whereNumber('job')->name('favorites.toggle');
+        Route::post('/{job}/favorite',        [FavoriteController::class, 'store'])->whereNumber('job')->name('favorites.store');
+        Route::delete('/{job}/favorite',        [FavoriteController::class, 'destroy'])->whereNumber('job')->name('favorites.destroy');
+        Route::post('/{job}/favorite/toggle', [FavoriteController::class, 'toggle'])->whereNumber('job')->name('favorites.toggle');
     });
 
     // 一覧（公開）
@@ -148,7 +152,6 @@ Route::middleware(['auth:web', 'role:company'])->prefix('users')->name('users.')
 });
 
 /* ===== Dashboard（一般ログイン専用：admin では入れない） ===== */
-// ★ ここで intended が残っていればダッシュボードではなく優先的にそこへ飛ばす
 Route::get('/dashboard', function () {
     if (session()->has('url.intended')) {
         $to = session('url.intended');
@@ -157,7 +160,7 @@ Route::get('/dashboard', function () {
     }
     return view('dashboard');
 })->middleware(['auth:web', 'role:enduser,company'])
-  ->name('dashboard');
+    ->name('dashboard');
 
 /* ------------------------------------------------------------------
 | Admin（auth:admin）
@@ -165,15 +168,21 @@ Route::get('/dashboard', function () {
 Route::prefix('admin')->middleware(['auth:admin'])->name('admin.')->group(function () {
 
     // ✅ Bladeの /admin/posts ルートは削除（Filament に任せる）
-    Route::get('__alias/filament-posts', fn () =>
+    Route::get(
+        '__alias/filament-posts',
+        fn() =>
         redirect(PostResource::getUrl('index', panel: 'admin'))
     )->name('posts.index');
 
-    Route::get('__alias/filament-posts/create', fn () =>
+    Route::get(
+        '__alias/filament-posts/create',
+        fn() =>
         redirect(PostResource::getUrl('create', panel: 'admin'))
     )->name('posts.create');
 
-    Route::get('__alias/filament-posts/{post}/edit', fn ($post) =>
+    Route::get(
+        '__alias/filament-posts/{post}/edit',
+        fn($post) =>
         redirect(PostResource::getUrl('edit', ['record' => $post], panel: 'admin'))
     )->whereNumber('post')->name('posts.edit');
 
@@ -181,12 +190,12 @@ Route::prefix('admin')->middleware(['auth:admin'])->name('admin.')->group(functi
     Route::post('/preupload', [PostController::class, 'preupload'])->name('preupload');
 
     // 行内操作API
-    Route::post  ('users/{user}/set-role',                 [UserQuickAssignController::class,'setRole'])
+    Route::post('users/{user}/set-role',                 [UserQuickAssignController::class, 'setRole'])
         ->whereNumber('user')->name('users.set_role');
-    Route::post  ('users/{user}/assign-company',           [UserQuickAssignController::class,'assignCompany'])
+    Route::post('users/{user}/assign-company',           [UserQuickAssignController::class, 'assignCompany'])
         ->whereNumber('user')->name('users.assign_company');
-    Route::delete('users/{user}/assign-company/{company}', [UserQuickAssignController::class,'unassign'])
-        ->whereNumber(['user','company'])->name('users.unassign_company');
+    Route::delete('users/{user}/assign-company/{company}', [UserQuickAssignController::class, 'unassign'])
+        ->whereNumber(['user', 'company'])->name('users.unassign_company');
 
     /* Recruit Jobs（Filament に委譲） */
     $recruitSlug = method_exists(RecruitJobResource::class, 'getSlug') ? RecruitJobResource::getSlug() : 'recruit-jobs';
@@ -224,15 +233,15 @@ Route::prefix('admin')->middleware(['auth:admin'])->name('admin.')->group(functi
     Route::get('applications/export', [ApplicationsController::class, 'export'])->name('applications.export');
 
     // アップロード疎通テスト
-    Route::match(['get','post'], 'posts/__upload-test', function (Request $r) {
+    Route::match(['get', 'post'], 'posts/__upload-test', function (Request $r) {
         if ($r->isMethod('post')) {
             if (!$r->hasFile('f')) return 'no file';
             $f = $r->file('f');
-            if (!$f->isValid()) return 'err: '.$f->getError();
+            if (!$f->isValid()) return 'err: ' . $f->getError();
             $p = $f->store('thumbnails', 'public');
-            return 'stored: '.Storage::url($p);
+            return 'stored: ' . Storage::url($p);
         }
-        return '<form method="post" enctype="multipart/form-data">'.csrf_field().'<input type="file" name="f" accept="image/*"><button>send</button></form>';
+        return '<form method="post" enctype="multipart/form-data">' . csrf_field() . '<input type="file" name="f" accept="image/*"><button>send</button></form>';
     })->name('posts.uploadtest');
 });
 
@@ -259,7 +268,7 @@ if (!Route::has('filament.admin.auth.logout')) {
     })->name('filament.admin.auth.logout');
 }
 if (!Route::has('filament.admin.auth.login')) {
-    Route::get('/admin/__alias/filament-login', fn () => redirect('/admin/login'))
+    Route::get('/admin/__alias/filament-login', fn() => redirect('/admin/login'))
         ->name('filament.admin.auth.login');
 }
 
@@ -267,17 +276,30 @@ if (!Route::has('filament.admin.auth.login')) {
 Route::middleware('auth:web')->group(function () {
     if (class_exists(ProfileController::class)) {
         Route::get('/profile',   [ProfileController::class, 'edit'])->name('profile.edit');
-        Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
-        Route::delete('/profile',[ProfileController::class, 'destroy'])->name('profile.destroy');
-        Route::get('/profile/edit', fn () => redirect()->route('profile.edit'))->name('user.profile.edit');
+        Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update'); // 互換保持
+
+        // ✅ 分割更新エンドポイント（今回の本題）
+        Route::patch('/profile/basics',     [ProfileController::class, 'updateBasics'])->name('profile.update.basics');
+        Route::patch('/profile/educations', [ProfileController::class, 'updateEducations'])->name('profile.update.educations');
+        Route::patch('/profile/works',      [ProfileController::class, 'updateWorks'])->name('profile.update.works');
+        Route::patch('/profile/desired',    [ProfileController::class, 'updateDesired'])->name('profile.update.desired');
+
+        Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+        Route::get('/profile/edit', fn() => redirect()->route('profile.edit'))->name('user.profile.edit');
     }
 });
 
 // ===== includes =====
-if (file_exists(__DIR__.'/auth.php'))        { require __DIR__.'/auth.php'; }
-if (file_exists(__DIR__.'/admin.php'))       { require __DIR__.'/admin.php'; }
-if (file_exists(__DIR__.'/front_public.php')){ require __DIR__.'/front_public.php'; }
+if (file_exists(__DIR__ . '/auth.php')) {
+    require __DIR__ . '/auth.php';
+}
+if (file_exists(__DIR__ . '/admin.php')) {
+    require __DIR__ . '/admin.php';
+}
+if (file_exists(__DIR__ . '/front_public.php')) {
+    require __DIR__ . '/front_public.php';
+}
 
 /* ===== DEBUG ===== */
-Route::get('/__ping', fn () => 'pong');
-Route::middleware(['auth:admin'])->get('/__role-test', fn () => 'ok');
+Route::get('/__ping', fn() => 'pong');
+Route::middleware(['auth:admin'])->get('/__role-test', fn() => 'ok');

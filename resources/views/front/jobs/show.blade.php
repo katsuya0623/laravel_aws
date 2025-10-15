@@ -7,9 +7,26 @@
       {{ $job->title ?? '求人詳細' }}
     </h1>
 
-    {{-- ★ お気に入りボタン＋件数 --}}
+    {{-- =========================
+         お気に入り（未ログイン対応）
+       ========================= --}}
     <div style="margin-bottom:16px;display:flex;gap:10px;align-items:center;">
-      <x-favorite-toggle :job="$job" />
+      @auth('web')
+        {{-- ログイン済み：既存トグルそのまま --}}
+        <x-favorite-toggle :job="$job" />
+      @else
+        {{-- 未ログイン：favorite-apply に POSTして応募ゲートへ（ログイン後にAutoFavorite発火） --}}
+        <form method="POST"
+              action="{{ route('front.jobs.favorite_apply', ['slugOrId' => $job->slug ?? $job->id]) }}">
+          @csrf
+          <button type="submit"
+                  class="btn btn-link p-0 align-baseline"
+                  style="background:none;border:none;color:#4f46e5;cursor:pointer;">
+            ☆ 追加（ログイン）
+          </button>
+        </form>
+      @endauth
+
       <span style="font-size:12px;color:#6b7280;">
         ★ {{ $job->favored_by_count ?? $job->favoredBy()->count() }}
       </span>
@@ -21,11 +38,14 @@
       </div>
     @endif
 
+    {{-- =========================
+         応募セクション
+       ========================= --}}
     <section style="margin-top:24px;border:1px solid #e5e7eb;border-radius:8px;padding:16px;">
       <h2 style="font-weight:700;margin-bottom:12px;">この求人に応募する</h2>
 
-      @auth
-        {{-- ログイン済み：フォームを表示（POSTはauthで保護済み） --}}
+      @auth('web')
+        {{-- 既存の応募フォーム（ログイン済みのときだけ表示） --}}
         <form method="POST" action="{{ route('front.jobs.apply', $job) }}">
           @csrf
 
@@ -58,15 +78,18 @@
             応募する
           </button>
         </form>
+
       @else
-        {{-- 未ログイン：ログイン／新規登録前に intended を確実にセット --}}
-        <a href="{{ route('login.intended', ['redirect' => route('front.jobs.apply.gate', $job)]) }}"
+        {{-- 未ログイン：既存の「ログイン/新規登録 → 応募画面へ復帰」を維持 --}}
+        {{-- ログインは保護ルートへ直接飛ばす（intendedはLaravel標準に任せる） --}}
+        <a href="{{ route('front.jobs.apply.gate', ['job' => $job->slug, 'autofav' => 1]) }}"
            style="display:inline-block;background:#111827;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;">
           ログインして応募する
         </a>
         <div style="margin-top:8px;color:#6b7280;font-size:13px;">
           はじめての方は
-          <a href="{{ route('register.intended', ['redirect' => route('front.jobs.apply.gate', $job)]) }}"
+          {{-- 新規登録は intended を明示して apply.gate?autofav=1 へ戻す --}}
+          <a href="{{ route('register.intended', ['redirect' => route('front.jobs.apply.gate', ['job' => $job->slug, 'autofav' => 1])]) }}"
              style="color:#4f46e5;text-decoration:underline;">
             新規登録
           </a>

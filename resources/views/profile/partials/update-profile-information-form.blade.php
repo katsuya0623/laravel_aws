@@ -48,7 +48,7 @@
     <div class="card-body">
       <h2 class="card-title">基本情報</h2>
 
-      <form method="post" action="{{ route('profile.update') }}" class="grid gap-6" enctype="multipart/form-data">
+      <form method="post" action="{{ route('profile.update.basics') }}" class="grid gap-6" enctype="multipart/form-data">
         @csrf @method('patch')
 
         {{-- アバター --}}
@@ -186,7 +186,7 @@
   <div class="card bg-base-100 shadow-sm" x-data="eduForm(@js($educationsInit))">
     <div class="card-body">
       <h2 class="card-title">学歴</h2>
-      <form method="post" action="{{ route('profile.update') }}">
+      <form method="post" action="{{ route('profile.update.educations') }}">
         @csrf @method('patch')
         <template x-for="(row, i) in rows" :key="i">
           <div class="grid md:grid-cols-5 gap-4 mb-2">
@@ -234,7 +234,7 @@
   <div class="card bg-base-100 shadow-sm" x-data="workForm(@js($worksInit))">
     <div class="card-body">
       <h2 class="card-title">職歴</h2>
-      <form method="post" action="{{ route('profile.update') }}">
+      <form method="post" action="{{ route('profile.update.works') }}">
         @csrf @method('patch')
         <template x-for="(row, i) in rows" :key="i">
           <div class="grid gap-4 mb-2">
@@ -297,7 +297,7 @@
     <div class="card-body">
       <h2 class="card-title">希望条件</h2>
 
-      <form method="post" action="{{ route('profile.update') }}" class="grid gap-6">
+      <form method="post" action="{{ route('profile.update.desired') }}" class="grid gap-6">
         @csrf @method('patch')
 
         {{-- 職種（複数） --}}

@@ -55,6 +55,9 @@ class Kernel extends HttpKernel
 
         // ★ 役割チェック（EnsureUserRole）
         'role'             => \App\Http\Middleware\EnsureUserRole::class,
+
+        // ★ お気に入り自動登録
+        'autofavorite'     => \App\Http\Middleware\AutoFavorite::class,
     ];
 
     /**
@@ -73,5 +76,8 @@ class Kernel extends HttpKernel
         'verified'         => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
 
         'role'             => \App\Http\Middleware\EnsureUserRole::class,
+
+        // ★ お気に入り自動登録（ルート単位でも使えるように）
+        'autofavorite'     => \App\Http\Middleware\AutoFavorite::class,
     ];
 }
