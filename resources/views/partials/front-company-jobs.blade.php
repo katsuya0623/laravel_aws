@@ -1,63 +1,126 @@
 {{-- resources/views/partials/front-company-jobs.blade.php --}}
 @once
 @php
-  // Controllerから来ていれば優先。無ければ下でフォールバック取得。
   $companies = collect($companiesTop ?? []);
   $jobs      = collect($jobsTop ?? []);
 
-  /* ===== Companies fallback (Eloquent優先) ===== */
+  // デバッグ表示トグル（URL に ?dbg=1 を付けると表示）
+  $DBG = request()->boolean('dbg');
+
+  /**
+   * /storage 配下の公開URLを「安全に」組み立てる（日本語/スペースを rawurlencode）
+   */
+  $storage_url_enc = function (string $rel): string {
+    $rel   = str_replace('\\', '/', trim($rel, '/'));
+    $parts = array_map('rawurlencode', array_filter(explode('/', $rel), 'strlen'));
+    return asset('storage/'.implode('/', $parts));
+  };
+
+  // ===== URL正規化（強化版） =====
+  $normalize = function (?string $p) use ($storage_url_enc): ?string {
+    if (!$p) return null;
+    $p = trim($p);
+
+    // 完全URL
+    if (preg_match('#^https?://#i', $p)) return $p;
+
+    // 物理パス → /storage/...
+    if (preg_match('#/storage/app/public/(.+)$#iu', $p, $m)) {
+      return $storage_url_enc($m[1]);
+    }
+
+    // ルート相対
+    if (\Illuminate\Support\Str::startsWith($p, '/')) return $p;
+
+    // 区切り統一
+    $p = str_replace('\\', '/', $p);
+
+    // 明示的に recruit_jobs/... は /storage/recruit_jobs/... に（exists() に頼らない）
+    if (\Illuminate\Support\Str::startsWith($p, 'recruit_jobs/')) {
+      return $storage_url_enc($p);
+    }
+
+    // public/... → /storage/...
+    if (\Illuminate\Support\Str::startsWith($p, 'public/')) {
+      $rel = ltrim(\Illuminate\Support\Str::after($p, 'public/'), '/');
+      return $storage_url_enc($rel);
+    }
+
+    // storage/...（既に公開パス相対）→ そのまま asset
+    if (\Illuminate\Support\Str::startsWith($p, 'storage/')) {
+      return asset($p);
+    }
+
+    // public ディスクに存在する相対パス（日本語名にも対応）
+    try {
+      if (\Illuminate\Support\Facades\Storage::disk('public')->exists($p)) {
+        return $storage_url_enc($p);
+      }
+    } catch (\Throwable $e) {
+      // exists() が失敗した場合は下の楽観フォールバックへ
+    }
+
+    // 画像拡張子っぽい相対パスは楽観的に /storage/... を返す
+    if (preg_match('#\.(png|jpe?g|webp|gif|svg)$#iu', $p)) {
+      return $storage_url_enc($p);
+    }
+
+    // /public 直置き
+    if (file_exists(public_path($p))) return asset($p);
+
+    // ドメイン付きの /storage/... を抽出
+    if (preg_match('#https?://[^/]+/(storage/.+)$#iu', $p, $m)) return '/'.$m[1];
+
+    return null;
+  };
+
+  // ===== 本文などから最初の画像URLを抜く（強化版） =====
+  $extractFirstImg = function ($raw) {
+    if (!$raw) return null;
+    $s = is_string($raw) ? $raw : (is_array($raw) ? json_encode($raw, JSON_UNESCAPED_UNICODE) : strval($raw));
+    $s = html_entity_decode($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    if (preg_match('#<img[^>]+(?:data-src|src)=["\']([^"\']+)["\']#i', $s, $m)) return $m[1];      // img src/data-src
+    if (preg_match('#<(?:source|img)[^>]+srcset=["\']([^"\']+)["\']#i', $s, $m)) {                 // srcset
+      $first = preg_split('/\s|,/', trim($m[1]))[0] ?? null; if ($first) return $first;
+    }
+    if (preg_match('#!\[[^\]]*\]\(([^)]+)\)#', $s, $m)) return $m[1];                               // Markdown
+    if (preg_match('#"src"\s*:\s*"([^"]+\.(?:png|jpe?g|gif|webp|svg))"#i', $s, $m)) return $m[1];  // JSON
+    if (preg_match('#background-image\s*:\s*url\((["\']?)([^)\'"]+)\1\)#i', $s, $m)) return $m[2]; // CSS
+    return null;
+  };
+
+  // ===== Companies フォールバック =====
   if ($companies->isEmpty()) {
     try {
       if (class_exists(\App\Models\Company::class) && \Schema::hasTable('companies')) {
-        // ★ Eloquent 経由で取る → getLogoUrlAttribute が効く
         $q = \App\Models\Company::query();
         if (\Schema::hasColumn('companies','is_published')) $q->where('is_published', 1);
         if (\Schema::hasColumn('companies','published'))    $q->where('published', 1);
         if (\Schema::hasColumn('companies','status'))       $q->where('status', 'published');
         if (\Schema::hasColumn('companies','deleted_at'))   $q->whereNull('deleted_at');
-        // デモ除外（あれば）
-        if (\Schema::hasColumn('companies','name')) {
-          $q->where('name','not like','%デモ%')->where('name','not like','%demo%');
-        }
-        if (\Schema::hasColumn('companies','email')) $q->where('email','not like','%@example.%');
-        if (\Schema::hasColumn('companies','is_demo')) {
-          $q->where(function($qq){ $qq->whereNull('is_demo')->orWhere('is_demo',0); });
-        }
-        $companies = $q->orderByDesc('id')->limit(6)->get();
-      } elseif (\Schema::hasTable('company_profiles')) {
-        // 互換: プロファイルテーブルのみの場合はQBで
-        $q = \DB::table('company_profiles');
-        if (\Schema::hasColumn('company_profiles','deleted_at')) $q->whereNull('deleted_at');
+        if (\Schema::hasColumn('companies','name'))         $q->where('name','not like','%デモ%')->where('name','not like','%demo%');
         $companies = $q->orderByDesc('id')->limit(6)->get();
       }
     } catch (\Throwable $e) { $companies = collect(); }
   }
 
-  /* ===== Jobs fallback ===== */
+  // ===== Jobs フォールバック =====
   if ($jobs->isEmpty()) {
     try {
-      $jtable = \Schema::hasTable('jobs') ? 'jobs'
-              : (\Schema::hasTable('recruit_jobs') ? 'recruit_jobs' : null);
+      $jtable = \Schema::hasTable('jobs') ? 'jobs' : (\Schema::hasTable('recruit_jobs') ? 'recruit_jobs' : null);
       if ($jtable) {
         $jq = \DB::table($jtable);
         if (\Schema::hasColumn($jtable,'is_published')) $jq->where('is_published', 1);
         if (\Schema::hasColumn($jtable,'published'))    $jq->where('published', 1);
         if (\Schema::hasColumn($jtable,'status'))       $jq->where('status', 'published');
         if (\Schema::hasColumn($jtable,'deleted_at'))   $jq->whereNull('deleted_at');
-        if (\Schema::hasColumn($jtable,'title')) {
-          $jq->where('title','not like','%デモ%')->where('title','not like','%demo%');
-        }
-        if (\Schema::hasColumn($jtable,'is_demo')) {
-          $jq->where(function($qq){ $qq->whereNull('is_demo')->orWhere('is_demo',0); });
-        }
-        $jobs = $jq->orderByDesc('id')->limit(6)->get();
+        $jobs = $jq->orderByDesc('id')->limit(12)->get();
       }
     } catch (\Throwable $e) { $jobs = collect(); }
   }
 
-  // 一覧URL（名前付きルートが無い環境でも壊れないように）
   $companyIndexUrl = \Route::has('front.company.index') ? route('front.company.index') : url('/company');
-  $jobIndexUrl     = \Route::has('front.jobs.index')     ? route('front.jobs.index')     : url('/recruit_jobs');
+  $jobIndexUrl     = \Route::has('front.jobs.index')    ? route('front.jobs.index')    : url('/recruit_jobs');
 @endphp
 
 <div style="max-width: 920px; margin: 24px auto 0;">
@@ -69,95 +132,39 @@
       <a href="{{ $companyIndexUrl }}" style="font-size:12px;color:#6366f1;text-decoration:none;">企業一覧へ</a>
     </div>
 
-    @if($companies->isEmpty())
-      <div style="padding:0 16px 16px; color:#64748b; font-size:13px;">企業データは準備中です。</div>
-    @else
-      <ul style="list-style:none;margin:0;padding:0 0 8px;">
-        @foreach($companies as $c)
-          @php
-            $name = $c->name ?? $c->company_name ?? '(名称未設定)';
-            $slug = $c->slug ?? null;
+    <ul style="list-style:none;margin:0;padding:0 0 8px;">
+      @forelse($companies as $c)
+        @php
+          $name   = $c->name ?? $c->company_name ?? '(名称未設定)';
+          $param  = $c->slug ?? $c->id ?? null;
+          $showUrl= $param ? (\Route::has('front.company.show') ? route('front.company.show',$param) : url('/company/'.$param)) : '#';
 
-            // 詳細URL（slug優先→id）
-            $param   = ($c->slug ?? null) ?: ($c->id ?? null);
-            $showUrl = $param
-              ? ( \Route::has('front.company.show') ? route('front.company.show', $param) : url('/company/'.$param) )
-              : '#';
-
-            /* --- ロゴURL：まずは Eloquent アクセサの値を最優先（= 詳細ページと同じ結果） --- */
-            $logoUrl = null;
-            if ($c instanceof \Illuminate\Database\Eloquent\Model) {
-              // getLogoUrlAttribute があれば $c->logo_url で取得できる
-              $logoUrl = $c->getAttribute('logo_url') ?? null;
-              // プロパティ直参照（snake/camel どちらも見る）
-              if (!$logoUrl) $logoUrl = $c->logo_url ?? $c->logoUrl ?? null;
-            }
-
-            // アクセサが無い/効かない場合は既存カラムから推測
-            if (!$logoUrl) {
-              $candidates = [
-                'logo','logo_path','logo_url',
-                'image','image_path','image_url',
-                'thumbnail','thumbnail_path','thumbnail_url',
-                'thumb','avatar','avatar_path','avatar_url',
-                'icon','icon_path','icon_url','cover','cover_image'
-              ];
-              foreach ($candidates as $col) {
-                if (!empty($c->$col ?? null)) { $logoUrl = (string)$c->$col; break; }
-              }
-              // パス正規化
-              $normalize = function (?string $p): ?string {
-                if (!$p) return null;
-                $p = trim($p);
-                if (preg_match('#^https?://#i',$p) || str_starts_with($p,'/')) return $p;
-                if (str_starts_with($p,'public/')) {
-                  $rel = substr($p,7);
-                  return \Storage::disk('public')->url($rel);
-                }
-                if (\Storage::disk('public')->exists($p)) return \Storage::disk('public')->url($p);
-                if (file_exists(public_path($p))) return asset($p);
-                return $p;
-              };
-              $logoUrl = $normalize($logoUrl);
-            }
-
-            // それでも無ければ slug から推測
-            if (!$logoUrl && $slug) {
-              $dirs = ['logos','company_logos','images/logos','images/company','uploads/logos'];
-              $exts = ['png','jpg','jpeg','webp','svg'];
-              foreach ($dirs as $d) {
-                foreach ($exts as $ext) {
-                  $p = "$d/$slug.$ext";
-                  if (\Storage::disk('public')->exists($p)) { $logoUrl = \Storage::disk('public')->url($p); break 2; }
-                  if (file_exists(public_path($p)))         { $logoUrl = asset($p);                         break 2; }
-                }
-              }
-            }
-
-            // 最終フォールバック：頭文字SVG
-            if (!$logoUrl) {
-              $initial = strtoupper(mb_substr($name, 0, 1, 'UTF-8'));
-              $svg = '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">'
-                   . '<rect width="48" height="48" rx="8" fill="#E5E7EB"/>'
-                   . '<text x="50%" y="58%" text-anchor="middle" font-family="system-ui,-apple-system,Segoe UI,Roboto" '
-                   . 'font-size="22" fill="#6B7280">'.$initial.'</text></svg>';
-              $logoUrl = 'data:image/svg+xml;utf8,'.rawurlencode($svg);
-            }
-          @endphp
-
-          <li style="border-top:1px solid #eef2f7;">
-            <a href="{{ $showUrl }}" style="display:flex;gap:12px;align-items:center;padding:12px 16px;text-decoration:none;color:inherit;">
-              <div style="width:48px;height:48px;background:#f1f5f9;border-radius:8px;display:grid;place-items:center;overflow:hidden;flex:0 0 auto;">
-                <img src="{{ $logoUrl }}" alt="{{ $name }}" style="max-width:100%;max-height:100%;object-fit:contain;" loading="lazy" onerror="this.style.display='none'">
-              </div>
-              <div style="min-width:0;">
-                <div style="font-weight:600;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ $name }}</div>
-              </div>
-            </a>
-          </li>
-        @endforeach
-      </ul>
-    @endif
+          $logo = null; $logoFrom = null;
+          foreach (['logo','logo_url','image','image_url','thumbnail','thumbnail_url'] as $col) {
+            if (!empty($c->$col)) { $logo = $normalize($c->$col); $logoFrom = 'company.'.$col; if ($logo) break; }
+          }
+          if (!$logo) {
+            $initial = strtoupper(mb_substr($name,0,1,'UTF-8'));
+            $svg = '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="8" fill="#E5E7EB"/><text x="50%" y="58%" text-anchor="middle" font-family="system-ui" font-size="22" fill="#6B7280">'.$initial.'</text></svg>';
+            $logo = 'data:image/svg+xml;utf8,'.rawurlencode($svg);
+            $logoFrom = 'fallback:svg';
+          }
+        @endphp
+        <li style="border-top:1px solid #eef2f7;">
+          <a href="{{ $showUrl }}" style="display:flex;gap:12px;align-items:center;padding:12px 16px;text-decoration:none;color:inherit;">
+            <div style="width:48px;height:48px;background:#f1f5f9;border-radius:8px;display:grid;place-items:center;overflow:hidden;">
+              <img src="{{ $logo }}" alt="{{ $name }}" style="width:100%;height:100%;object-fit:contain">
+            </div>
+            <div style="min-width:0;">
+              <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ $name }}</div>
+              @if($DBG)<div style="font-size:11px;color:#64748b;">logoFrom: {{ $logoFrom }}</div>@endif
+            </div>
+          </a>
+        </li>
+      @empty
+        <li style="padding:0 16px 16px;color:#64748b;font-size:13px;">企業データは準備中です。</li>
+      @endforelse
+    </ul>
 
     {{-- 求人 --}}
     <div style="padding:8px 16px; display:flex; justify-content:space-between; align-items:center;">
@@ -165,50 +172,100 @@
       <a href="{{ $jobIndexUrl }}" style="font-size:12px;color:#6366f1;text-decoration:none;">求人一覧へ</a>
     </div>
 
-    @if($jobs->isEmpty())
-      <div style="padding:0 16px 16px; color:#64748b; font-size:13px;">求人データは準備中です。</div>
-    @else
-      <ul style="list-style:none;margin:0;padding:0 0 16px;">
-        @foreach($jobs as $j)
-          @php
-            $slugRaw = (string)($j->slug ?? '');
-            if (\Illuminate\Support\Str::startsWith($slugRaw, ['/jobs/','jobs/'])) {
-              $slugRaw = ltrim(preg_replace('#^/?jobs/#','',$slugRaw),'/');
-            }
-            $p = $slugRaw !== '' ? $slugRaw : ($j->id ?? null);
-            $showUrl = $p
-              ? ( \Route::has('front.jobs.show') ? route('front.jobs.show', $p) : url('/recruit_jobs/'.$p) )
-              : '#';
+    <ul style="list-style:none;margin:0;padding:0 0 16px;">
+      @forelse($jobs as $j)
+        @php
+          // 詳細URL
+          $slugRaw = (string)($j->slug ?? '');
+          if (\Illuminate\Support\Str::startsWith($slugRaw, ['/jobs/','jobs/'])) {
+            $slugRaw = ltrim(preg_replace('#^/?jobs/#','',$slugRaw),'/');
+          }
+          $param   = $slugRaw !== '' ? $slugRaw : ($j->id ?? null);
+          $showUrl = $param ? (\Route::has('front.jobs.show') ? route('front.jobs.show',$param) : url('/recruit_jobs/'.$param)) : '#';
 
-            $thumb = $j->thumbnail_url ?? $j->thumbnail_path ?? $j->thumbnail ?? null;
-            if ($thumb && !\Illuminate\Support\Str::startsWith($thumb, ['http://','https://','/'])) {
-              if (str_starts_with($thumb,'public/')) {
-                $thumb = \Storage::disk('public')->url(substr($thumb,7));
-              } elseif (\Storage::disk('public')->exists($thumb)) {
-                $thumb = \Storage::disk('public')->url($thumb);
-              } elseif (file_exists(public_path($thumb))) {
-                $thumb = asset($thumb);
+          // ===== サムネ選定順 =====
+          $thumb = null; $thumbFrom = null;
+
+          // 1) 本文から最初の画像
+          foreach (['description','body','content_html','content','html','markdown','text'] as $cf) {
+            if (!empty($j->$cf)) { $tmp = $extractFirstImg((string)$j->$cf); if ($tmp) { $thumb=$tmp; $thumbFrom='body:'.$cf; break; } }
+          }
+          $thumb = $normalize($thumb);
+
+          // 2) サムネ候補カラム
+          if (!$thumb) {
+            foreach (['thumbnail_url','thumbnail_path','thumbnail','image','image_url','image_path','cover_image','cover_image_url'] as $col) {
+              if (!empty($j->$col)) { $tmp = $normalize($j->$col); if ($tmp) { $thumb=$tmp; $thumbFrom='column:'.$col; break; } }
+            }
+          }
+
+          // 3) 会社ロゴ
+          if (!$thumb) {
+            $company = null;
+            if ($j instanceof \Illuminate\Database\Eloquent\Model) {
+              $company = $j->getRelation('company') ?? null;
+            }
+            if (!$company && !empty($j->company_id) && class_exists(\App\Models\Company::class)) {
+              try { $company = \App\Models\Company::find($j->company_id); } catch (\Throwable $e) {}
+            }
+            if ($company) {
+              foreach (['logo','logo_url','image','image_url','thumbnail','thumbnail_url'] as $col) {
+                if (!empty($company->$col)) { $tmp = $normalize($company->$col); if ($tmp) { $thumb=$tmp; $thumbFrom='company:'.$col; break; } }
               }
             }
-          @endphp
+          }
 
-          <li style="border-top:1px solid #eef2f7;">
-            <a href="{{ $showUrl }}" style="display:flex;gap:12px;align-items:center;padding:12px 16px;text-decoration:none;color:inherit;">
-              <div style="width:64px;height:40px;background:#f1f5f9;border-radius:6px;overflow:hidden;flex:0 0 auto;">
-                @if($thumb)
-                  <img src="{{ $thumb }}" alt="" style="width:100%;height:100%;object-fit:cover;" loading="lazy" onerror="this.style.display='none'">
-                @endif
-              </div>
-              <div style="min-width:0;">
-                <div style="font-weight:600;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                  {{ $j->title ?? '(無題)' }}
-                </div>
-              </div>
-            </a>
-          </li>
-        @endforeach
-      </ul>
-    @endif
+          // 4) 最終フォールバック：レコード全体走査
+          if (!$thumb) {
+            $blob = json_encode($j, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $cands = [];
+            if (preg_match_all('#(?:data-src|src)\s*[:=]\s*["\']([^"\']+)["\']#i', $blob, $m)) $cands = array_merge($cands, $m[1]);
+            if (preg_match_all('#url\((["\']?)([^)\'"]+)\1\)#i', $blob, $m))               $cands = array_merge($cands, $m[2]);
+            if (preg_match_all('#https?://[^"\']+\.(?:png|jpe?g|webp|gif|svg)#i', $blob, $m)) $cands = array_merge($cands, $m[0]);
+            if (preg_match_all('#/storage/[^"\']+\.(?:png|jpe?g|webp|gif|svg)#i', $blob, $m))  $cands = array_merge($cands, $m[0]);
+            if (preg_match_all('#/storage/app/public/([^"\']+\.(?:png|jpe?g|webp|gif|svg))#i', $blob, $m)) {
+              foreach ($m[1] as $rel) $cands[] = 'storage/'.$rel;
+            }
+            foreach ($cands as $cand) {
+              $try = $normalize($cand);
+              if ($try) { $thumb = $try; $thumbFrom = 'scan'; break; }
+            }
+          }
+
+          // 5) No image（SVG）
+          if (!$thumb) {
+            $initial = strtoupper(mb_substr((string)($j->title ?? 'J'),0,1,'UTF-8'));
+            $svg = '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="60" viewBox="0 0 96 60"><rect width="96" height="60" rx="6" fill="#F1F5F9"/><text x="50%" y="60%" text-anchor="middle" font-size="22" fill="#94A3B8">'.$initial.'</text></svg>';
+            $thumb = 'data:image/svg+xml;utf8,'.rawurlencode($svg);
+            $thumbFrom = 'fallback:svg';
+          }
+
+          // デバッグ用サマリ
+          $debugSummary = '';
+          if ($DBG) {
+            $firstBody = '';
+            foreach (['description','body','content_html','content','html','markdown','text'] as $cf) {
+              if (!empty($j->$cf)) { $firstBody = mb_substr(strip_tags((string)$j->$cf), 0, 200, 'UTF-8'); break; }
+            }
+            $debugSummary = "from={$thumbFrom} | thumb={$thumb} | bodySnippet=".($firstBody ?: '(none)');
+          }
+        @endphp
+
+        <li style="border-top:1px solid #eef2f7;">
+          <a href="{{ $showUrl }}" style="display:flex;gap:12px;align-items:center;padding:12px 16px;text-decoration:none;color:inherit;">
+            <div style="width:64px;height:40px;background:#f1f5f9;border-radius:6px;overflow:hidden;flex:0 0 auto;">
+              <img src="{{ $thumb }}" alt="" style="width:100%;height:100%;object-fit:cover;object-position:center">
+            </div>
+            <div style="min-width:0;">
+              <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ $j->title ?? '(無題)' }}</div>
+              @if($DBG)<div style="font-size:11px;color:#64748b;">{{ $debugSummary }}</div>@endif
+            </div>
+          </a>
+        </li>
+      @empty
+        <li style="padding:0 16px 16px;color:#64748b;font-size:13px;">求人データは準備中です。</li>
+      @endforelse
+    </ul>
 
   </div>
 </div>

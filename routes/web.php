@@ -163,6 +163,19 @@ Route::get('/dashboard', function () {
 })->middleware(['auth:web', 'role:enduser,company'])
   ->name('dashboard');
 
+
+/* ===========================================================
+| 管理者ログイン（未認証専用）
+|===========================================================*/
+if (! \Illuminate\Support\Facades\Route::has('admin.login')) {
+    Route::prefix('admin')->name('admin.')->middleware(['web', 'guest:admin'])->group(function () {
+        Route::get('login', [\App\Http\Controllers\Admin\Auth\LoginController::class, 'show'])
+            ->name('login');
+        Route::post('login', [\App\Http\Controllers\Admin\Auth\LoginController::class, 'login'])
+            ->name('login.post');
+    });
+}
+
 /* ------------------------------------------------------------------
 | Admin（auth:admin）
 |-------------------------------------------------------------------*/
