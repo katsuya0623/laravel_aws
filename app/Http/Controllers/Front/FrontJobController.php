@@ -5,9 +5,10 @@ namespace App\Http\Controllers\Front;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
-use Illuminate\Support\Facades\Schema;
 use App\Support\RoleResolver;
 use App\Models\Job;
 
@@ -22,14 +23,15 @@ class FrontJobController extends Controller
         $table = (new Job)->getTable();
 
         $jobs = Job::query()
+            ->with('company') // ★ 一覧で会社を先読み（thumb_url用・N+1回避）
             ->when($q !== '', function ($qb) use ($q, $table) {
                 foreach (preg_split('/\s+/u', $q, -1, PREG_SPLIT_NO_EMPTY) as $kw) {
                     $qb->where(function ($qq) use ($kw, $table) {
                         $like = "%{$kw}%";
                         $qq->where('title', 'like', $like)
-                           ->orWhere('description', 'like', $like)
-                           ->orWhere('location', 'like', $like)
-                           ->orWhere('tags', 'like', $like);
+                            ->orWhere('description', 'like', $like)
+                            ->orWhere('location', 'like', $like)
+                            ->orWhere('tags', 'like', $like);
 
                         if (Schema::hasColumn($table, 'company_name')) {
                             $qq->orWhere('company_name', 'like', $like);
@@ -37,7 +39,7 @@ class FrontJobController extends Controller
                     });
                 }
             })
-            ->when(in_array($status, ['draft','published'], true), function ($qb) use ($status, $table) {
+            ->when(in_array($status, ['draft', 'published'], true), function ($qb) use ($status, $table) {
                 if (Schema::hasColumn($table, 'status')) {
                     $qb->where('status', $status);
                 } elseif (Schema::hasColumn($table, 'is_published')) {
@@ -55,9 +57,11 @@ class FrontJobController extends Controller
     public function show(string $slugOrId)
     {
         $job = Job::query()
-            ->when(is_numeric($slugOrId),
-                fn ($q) => $q->where('id', $slugOrId),
-                fn ($q) => $q->where('slug', $slugOrId)
+            ->with('company') // ★ 詳細でも会社を先読み（thumb_url/社名表示用）
+            ->when(
+                is_numeric($slugOrId),
+                fn($q) => $q->where('id', $slugOrId),
+                fn($q) => $q->where('slug', $slugOrId)
             )->firstOrFail();
 
         return view()->exists('front.jobs.show')
@@ -83,15 +87,18 @@ class FrontJobController extends Controller
             abort(403, '権限がありません。');
         }
 
-        // ★ normalize を追加
+        // 正規化
         $this->normalizePayload($request);
 
         [$rules, $messages, $attributes] = $this->rules();
+        // 画像の安全バリデーション（ファイルとして扱う）
+        $rules['image'] = ['sometimes', 'nullable', 'file', 'mimes:jpg,jpeg,png,webp', 'max:2048'];
         $data = $request->validate($rules, $messages, $attributes);
 
         // slug（重複ケア）
         $slugBase = Str::slug($data['title']) ?: Str::lower(Str::random(8));
-        $slug = $slugBase; $i = 1;
+        $slug = $slugBase;
+        $i = 1;
         while (Job::where('slug', $slug)->exists()) {
             $slug = $slugBase . '-' . (++$i);
         }
@@ -100,7 +107,7 @@ class FrontJobController extends Controller
 
         $full = [
             'title'           => $data['title'],
-            'description'     => $data['body'], // ← name="body"
+            'description'     => $data['body'],
             'slug'            => $slug,
             'user_id'         => $user->id,
             'company_name'    => $data['company_name']    ?? null,
@@ -120,6 +127,14 @@ class FrontJobController extends Controller
         }
         if (Schema::hasColumn($table, 'is_published')) {
             $full['is_published'] = $data['status'] === 'published' ? 1 : 0;
+        }
+
+        // 画像アップロード
+        if ($request->hasFile('image')) {
+            $path = $request->file('image')->store('recruit_jobs', 'public');
+            if (Schema::hasColumn($table, 'image_path')) {
+                $full['image_path'] = $path;
+            }
         }
 
         $cols    = Schema::getColumnListing($table);
@@ -144,10 +159,13 @@ class FrontJobController extends Controller
         $user = Auth::user();
         if (!$user || RoleResolver::resolve($user) !== 'company') abort(403);
 
-        // ★ normalize を追加
+        // 正規化
         $this->normalizePayload($request);
 
         [$rules, $messages, $attributes] = $this->rules(update: true);
+        // 画像の安全バリデーション（ファイルとして扱う）
+        $rules['image'] = ['sometimes', 'nullable', 'file', 'mimes:jpg,jpeg,png,webp', 'max:2048'];
+        $rules['remove_image'] = ['sometimes', 'boolean'];
         $data = $request->validate($rules, $messages, $attributes);
 
         $table = (new Job)->getTable();
@@ -174,6 +192,25 @@ class FrontJobController extends Controller
             $full['is_published'] = $data['status'] === 'published' ? 1 : 0;
         }
 
+        // 画像削除
+        if ($request->boolean('remove_image') && $job->image_path) {
+            Storage::disk('public')->delete($job->image_path);
+            if (Schema::hasColumn($table, 'image_path')) {
+                $full['image_path'] = null;
+            }
+        }
+
+        // 画像差し替え
+        if ($request->hasFile('image')) {
+            if ($job->image_path) {
+                Storage::disk('public')->delete($job->image_path);
+            }
+            $path = $request->file('image')->store('recruit_jobs', 'public');
+            if (Schema::hasColumn($table, 'image_path')) {
+                $full['image_path'] = $path;
+            }
+        }
+
         $cols    = Schema::getColumnListing($table);
         $payload = array_intersect_key($full, array_flip($cols));
 
@@ -187,11 +224,17 @@ class FrontJobController extends Controller
     {
         $user = Auth::user();
         if (!$user || RoleResolver::resolve($user) !== 'company') abort(403);
+
+        // 画像ファイルも削除
+        if ($job->image_path) {
+            Storage::disk('public')->delete($job->image_path);
+        }
+
         $job->delete();
         return redirect()->route('front.jobs.index')->with('success', '求人を削除しました。');
     }
 
-    /** ★ body の正規化（description などを吸収） */
+    /** body の正規化（description などを吸収） */
     private function normalizePayload(Request $request): void
     {
         $body = $request->input('body');
@@ -217,29 +260,34 @@ class FrontJobController extends Controller
     private function rules(bool $update = false): array
     {
         $rules = [
-            'title'           => ['required','string','max:255'],
-            'company_name'    => ['nullable','string','max:255'],
-            'location'        => ['nullable','string','max:255'],
-            'employment_type' => ['nullable','string','max:50'],
-            'work_style'      => ['nullable','string','max:50'],
-            'salary_from'     => ['nullable','integer','min:0'],
-            'salary_to'       => ['nullable','integer','min:0','gte:salary_from'],
-            'salary_unit'     => ['nullable', Rule::in(['年収','月収','時給'])],
-            'apply_url'       => ['nullable','url','max:512'],
-            'external_url'    => ['nullable','url','max:512'],
-            'body'            => ['required','string'],
-            'status'          => [$update ? 'nullable' : 'required', Rule::in(['draft','published'])],
-            'tags'            => ['nullable','string','max:255'],
+            'title'           => ['required', 'string', 'max:255'],
+            'company_name'    => ['nullable', 'string', 'max:255'],
+            'location'        => ['nullable', 'string', 'max:255'],
+            'employment_type' => ['nullable', 'string', 'max:50'],
+            'work_style'      => ['nullable', 'string', 'max:50'],
+            'salary_from'     => ['nullable', 'integer', 'min:0'],
+            'salary_to'       => ['nullable', 'integer', 'min:0', 'gte:salary_from'],
+            'salary_unit'     => ['nullable', Rule::in(['年収', '月収', '時給'])],
+            'apply_url'       => ['nullable', 'url', 'max:512'],
+            'external_url'    => ['nullable', 'url', 'max:512'],
+            'body'            => ['required', 'string'],
+            'status'          => [$update ? 'nullable' : 'required', Rule::in(['draft', 'published'])],
+            'tags'            => ['nullable', 'string', 'max:255'],
         ];
 
         $messages = [
-            'required' => ':attributeは必須です。',
-            'url'      => ':attributeの形式が正しくありません。',
-            'integer'  => ':attributeは数値で指定してください。',
-            'gte'      => ':attributeは:other以上で指定してください。',
-            'in'       => ':attributeの値が不正です。',
-            'max'      => ':attributeは:max文字以内で指定してください。',
-            'min'      => ':attributeは:min以上で指定してください。',
+            'required'   => ':attributeは必須です。',
+            'url'        => ':attributeの形式が正しくありません。',
+            'integer'    => ':attributeは数値で指定してください。',
+            'gte'        => ':attributeは:other以上で指定してください。',
+            'in'         => ':attributeの値が不正です。',
+            // 'max' は削ります（文字用が画像にも当たってしまうため）
+            'min'        => ':attributeは:min以上で指定してください。',
+            // 画像用のメッセージを属性指定で明示
+            'image'      => ':attributeは画像ファイルを指定してください。',
+            'mimes'      => ':attributeは jpg / jpeg / png / webp のいずれかを指定してください。',
+            'image.max'  => ':attributeは:maxKB以下にしてください。',
+            'file'       => ':attributeのアップロードに失敗しました。',
         ];
 
         $attributes = [
@@ -256,6 +304,7 @@ class FrontJobController extends Controller
             'body'            => '本文',
             'status'          => '公開ステータス',
             'tags'            => 'タグ',
+            'image'           => '画像',
         ];
 
         return [$rules, $messages, $attributes];

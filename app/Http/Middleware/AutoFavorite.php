@@ -8,11 +8,14 @@ use App\Models\Job;
 
 class AutoFavorite
 {
+    /**
+     * Handle an incoming request.
+     */
     public function handle(Request $request, Closure $next)
     {
-        // 先に実行（auth:web 通過後なのでユーザーは確実に居る）
+        // auth:web 通過後なのでユーザーは確実に居る
         if ($request->boolean('autofav') && auth()->check()) {
-            $routeJob = $request->route('job'); // {job:slug}
+            $routeJob = $request->route('job'); // {job:slug} を想定
 
             // {job} がモデルでも文字列でも対応
             $job = null;
@@ -20,12 +23,15 @@ class AutoFavorite
                 $job = $routeJob;
             } elseif (is_string($routeJob) || is_numeric($routeJob)) {
                 $job = Job::query()
-                    ->when(is_numeric($routeJob),
+                    ->when(
+                        is_numeric($routeJob),
                         fn($q) => $q->where('id', $routeJob),
                         fn($q) => $q->where('slug', $routeJob)
-                    )->first();
+                    )
+                    ->first();
             }
 
+            // ユーザーのお気に入りへ追加（既存は保持）
             if ($job) {
                 auth()->user()->favorites()->syncWithoutDetaching([$job->id]);
             }

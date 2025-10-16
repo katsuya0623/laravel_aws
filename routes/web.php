@@ -58,7 +58,7 @@ Route::get('/jobs/{slugOrId}', fn(string $slugOrId) => redirect("/recruit_jobs/{
     ->where('slugOrId', '^([A-Za-z0-9\-]+|\d+)$');
 Route::permanentRedirect('/jobs', '/recruit_jobs');
 
-// ===== ★ ログイン前に intended を明示セットする専用ルート =====
+// ===== ★ ログイン前 intended を明示セット =====
 Route::get('/login-intended', function (Request $request) {
     if ($to = $request->query('redirect')) {
         session(['url.intended' => $to]);
@@ -66,7 +66,7 @@ Route::get('/login-intended', function (Request $request) {
     return redirect()->route('login');
 })->name('login.intended');
 
-// ===== ★ 新規登録前にも intended を明示セットする専用ルート =====
+// ===== ★ 新規登録前 intended を明示セット =====
 Route::get('/register-intended', function (Request $request) {
     if ($to = $request->query('redirect')) {
         session(['url.intended' => $to]);
@@ -85,17 +85,23 @@ Route::prefix('company')->name('front.company.')->group(function () {
 // ===== Front: Jobs =====
 Route::prefix('recruit_jobs')->group(function () {
 
-    // ★ 企業ユーザー専用（静的ルートを先に置く）
+    // 一覧（公開）
+    Route::get('/', [FrontJobController::class, 'index'])->name('front.jobs.index');
+
+    // 企業ユーザー専用（作成・更新系）
     Route::middleware(['auth:web', 'role:company'])->group(function () {
-        Route::get('/create',      [FrontJobController::class, 'create'])->name('front.jobs.create');
+        Route::get('/create',       [FrontJobController::class, 'create'])->name('front.jobs.create');
         Route::post('/',            [FrontJobController::class, 'store'])->name('front.jobs.store');
-        Route::get('/{job}/edit',  [FrontJobController::class, 'edit'])->whereNumber('job')->name('front.jobs.edit');
-        Route::patch('/{job}',       [FrontJobController::class, 'update'])->whereNumber('job')->name('front.jobs.update');
-        Route::delete('/{job}',       [FrontJobController::class, 'destroy'])->whereNumber('job')->name('front.jobs.destroy');
+
+        Route::get('/{job}/edit',   [FrontJobController::class, 'edit'])
+            ->whereNumber('job')->name('front.jobs.edit');
+        Route::patch('/{job}',      [FrontJobController::class, 'update'])
+            ->whereNumber('job')->name('front.jobs.update');
+        Route::delete('/{job}',     [FrontJobController::class, 'destroy'])
+            ->whereNumber('job')->name('front.jobs.destroy');
     });
 
     // ★お気に入り→応募へ（ゲスト/ログイン両対応の入口）
-    //   slug または id のどちらでも受けられるようにしておく
     Route::post('/{slugOrId}/favorite-apply', [FavoriteController::class, 'favoriteAndApply'])
         ->where('slugOrId', '^([A-Za-z0-9\-]+|\d+)$')
         ->name('front.jobs.favorite_apply');
@@ -109,20 +115,15 @@ Route::prefix('recruit_jobs')->group(function () {
     Route::get('/{job:slug}/apply', function (\App\Models\Job $job) {
         return redirect()->route('front.jobs.show', $job->slug)->with('apply_intent', true);
     })
-        // ここを 'autofavorite' → クラス名指定に変更
         ->middleware(['auth:web', \App\Http\Middleware\AutoFavorite::class])
         ->name('front.jobs.apply.gate');
-
 
     // お気に入り（エンドユーザー専用）
     Route::middleware(['auth:web', 'role:enduser'])->group(function () {
         Route::post('/{job}/favorite',        [FavoriteController::class, 'store'])->whereNumber('job')->name('favorites.store');
-        Route::delete('/{job}/favorite',        [FavoriteController::class, 'destroy'])->whereNumber('job')->name('favorites.destroy');
+        Route::delete('/{job}/favorite',      [FavoriteController::class, 'destroy'])->whereNumber('job')->name('favorites.destroy');
         Route::post('/{job}/favorite/toggle', [FavoriteController::class, 'toggle'])->whereNumber('job')->name('favorites.toggle');
     });
-
-    // 一覧（公開）
-    Route::get('/', [FrontJobController::class, 'index'])->name('front.jobs.index');
 
     // ★ 動的ルートは最後。create を除外して衝突回避
     Route::get('/{slugOrId}', [FrontJobController::class, 'show'])
@@ -160,7 +161,7 @@ Route::get('/dashboard', function () {
     }
     return view('dashboard');
 })->middleware(['auth:web', 'role:enduser,company'])
-    ->name('dashboard');
+  ->name('dashboard');
 
 /* ------------------------------------------------------------------
 | Admin（auth:admin）
@@ -170,20 +171,17 @@ Route::prefix('admin')->middleware(['auth:admin'])->name('admin.')->group(functi
     // ✅ Bladeの /admin/posts ルートは削除（Filament に任せる）
     Route::get(
         '__alias/filament-posts',
-        fn() =>
-        redirect(PostResource::getUrl('index', panel: 'admin'))
+        fn() => redirect(PostResource::getUrl('index', panel: 'admin'))
     )->name('posts.index');
 
     Route::get(
         '__alias/filament-posts/create',
-        fn() =>
-        redirect(PostResource::getUrl('create', panel: 'admin'))
+        fn() => redirect(PostResource::getUrl('create', panel: 'admin'))
     )->name('posts.create');
 
     Route::get(
         '__alias/filament-posts/{post}/edit',
-        fn($post) =>
-        redirect(PostResource::getUrl('edit', ['record' => $post], panel: 'admin'))
+        fn($post) => redirect(PostResource::getUrl('edit', ['record' => $post], panel: 'admin'))
     )->whereNumber('post')->name('posts.edit');
 
     // ★互換：旧Bladeの AJAX プレアップロードが残っていても落ちないように
@@ -278,7 +276,7 @@ Route::middleware('auth:web')->group(function () {
         Route::get('/profile',   [ProfileController::class, 'edit'])->name('profile.edit');
         Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update'); // 互換保持
 
-        // ✅ 分割更新エンドポイント（今回の本題）
+        // ✅ 分割更新エンドポイント
         Route::patch('/profile/basics',     [ProfileController::class, 'updateBasics'])->name('profile.update.basics');
         Route::patch('/profile/educations', [ProfileController::class, 'updateEducations'])->name('profile.update.educations');
         Route::patch('/profile/works',      [ProfileController::class, 'updateWorks'])->name('profile.update.works');

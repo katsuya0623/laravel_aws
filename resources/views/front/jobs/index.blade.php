@@ -20,8 +20,14 @@
 .list{display:grid;gap:12px}
 .meta{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:#6b7280}
 .item{display:flex;gap:12px;padding:12px;border-radius:12px}
-.thumb{width:68px;height:68px;border:1px solid #e5e7eb;border-radius:10px;background:#f8fafc;display:grid;place-items:center;flex-shrink:0}
-.thumb span{font-size:11px;color:#94a3b8}
+
+/* ====== thumb ====== */
+.thumb{width:68px;height:68px;border:1px solid #e5e7eb;border-radius:10px;background:#f8fafc;display:grid;place-items:center;flex-shrink:0;overflow:hidden}
+.thumb span{font-size:11px;color:#94a3b8;line-height:1.2;text-align:center}
+.thumb-img{width:100%;height:100%;display:block;border-radius:10px;background:#fff}
+.thumb-img.cover{object-fit:cover;}   /* 求人画像はトリミング */
+.thumb-img.contain{object-fit:contain;} /* ロゴは全体表示 */
+
 .item-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .item-title{font-weight:700;color:#111827;text-decoration:none}
 .item-desc{color:#475569;line-height:1.6;margin-top:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
@@ -70,7 +76,18 @@
           @endphp
 
           <article class="card shadow item">
-            <a class="thumb" href="{{ $url }}"><span>NO<br>IMG</span></a>
+            <a class="thumb" href="{{ $url }}">
+              @if($job->image_url)
+                {{-- 求人にセットした画像（最優先）：cover でトリミング --}}
+                <img class="thumb-img cover" src="{{ $job->image_url }}" alt="{{ $job->title ?? 'サムネイル' }}" loading="lazy">
+              @elseif($job->company?->logo_url)
+                {{-- 会社ロゴ：contain で全体表示 --}}
+                <img class="thumb-img contain" src="{{ $job->company->logo_url }}" alt="{{ $job->company_name ?? '企業ロゴ' }}" loading="lazy">
+              @else
+                {{-- どちらも無い：従来の NO IMG を維持 --}}
+                <span>NO<br>IMG</span>
+              @endif
+            </a>
 
             <div style="flex:1;">
               <div class="item-head">
@@ -80,7 +97,7 @@
                 @endif
                 @if(!empty($job->status))
                   <span class="badge">{{ $job->status }}</span>
-                @endif>
+                @endif
               </div>
 
               <div class="meta" style="margin-top:6px;">
@@ -122,11 +139,28 @@
   <aside class="sidebar">
     <div class="card shadow box">
       <h3 class="section-h">タグ</h3>
+
       <div class="chips">
-        {{-- タグ機能がまだ無い前提でダミー。実装済みなら置き換えてください --}}
-        @foreach(['#リモート可','#急募','#未経験可','#フレックス'] as $tag)
-          <a class="badge" href="?q={{ urlencode(trim($tag,'#')) }}">{{ $tag }}</a>
-        @endforeach
+        @php
+          // 今ページの求人に「実際に存在するタグ」だけを抽出（カンマ/スペース区切り対応）
+          $allTags = $jobs->pluck('tags')
+            ->filter()
+            ->flatMap(function ($t) {
+              $t = trim($t);
+              if ($t === '') return [];
+              return preg_split('/[\s,　]+/u', $t, -1, PREG_SPLIT_NO_EMPTY);
+            })
+            ->map(fn($t) => trim($t))
+            ->filter()
+            ->unique()
+            ->values();
+        @endphp
+
+        @forelse ($allTags as $tag)
+          <a class="badge" href="?q={{ urlencode($tag) }}">#{{ $tag }}</a>
+        @empty
+          <span class="muted" style="font-size:12px;">タグはまだ登録されていません。</span>
+        @endforelse
       </div>
     </div>
 

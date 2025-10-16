@@ -13,11 +13,13 @@ use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\ToggleButtons;
+use Filament\Forms\Components\FileUpload;           // ★ 追加
 use Filament\Resources\Resource;
 use Filament\Support\Enums\Alignment;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Columns\ImageColumn;            // ★ 追加
 use Illuminate\Support\Facades\Schema;
 
 class RecruitJobResource extends Resource
@@ -78,6 +80,20 @@ class RecruitJobResource extends Resource
                     ->rows(10)
                     ->required()
                     ->columnSpanFull(),
+
+                // ★ 画像アップロード
+                FileUpload::make('image_path')
+                    ->label('求人画像')
+                    ->image()
+                    ->directory('recruit_jobs')           // storage/app/public/recruit_jobs
+                    ->disk('public')
+                    ->visibility('public')
+                    ->preserveFilenames()
+                    ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp'])
+                    ->maxSize(2048)                        // 2MB
+                    ->helperText('対応: jpg / jpeg / png / webp、2MB以内')
+                    ->columnSpanFull()
+                    ->visible(fn () => self::has('image_path')),
             ])->columns(1),
 
             Section::make('詳細')->schema([
@@ -132,7 +148,7 @@ class RecruitJobResource extends Resource
                         ->label('単位')
                         ->options([
                             '年収' => '年収',
-                            '月収' => '月収', // フロントと統一
+                            '月収' => '月収',
                             '時給' => '時給',
                         ])
                         ->native(false)
@@ -212,6 +228,16 @@ class RecruitJobResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('id')->label('ID')->sortable(),
+
+                // ★ サムネイル
+                ImageColumn::make('image_path')
+                    ->label('画像')
+                    ->disk('public')
+                    ->size(40)
+                    ->square()
+                    ->toggleable()
+                    ->visible(fn () => self::has('image_path')),
+
                 Tables\Columns\TextColumn::make('title')->label('タイトル')->searchable()->wrap(),
 
                 Tables\Columns\TextColumn::make('company.name')
