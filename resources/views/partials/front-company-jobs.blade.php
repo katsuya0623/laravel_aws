@@ -104,17 +104,27 @@
     } catch (\Throwable $e) { $companies = collect(); }
   }
 
-  // ===== Jobs フォールバック =====
+  // ===== Jobs フォールバック（Eloquentで取得してアクセサを使う） =====
   if ($jobs->isEmpty()) {
     try {
-      $jtable = \Schema::hasTable('jobs') ? 'jobs' : (\Schema::hasTable('recruit_jobs') ? 'recruit_jobs' : null);
-      if ($jtable) {
-        $jq = \DB::table($jtable);
-        if (\Schema::hasColumn($jtable,'is_published')) $jq->where('is_published', 1);
-        if (\Schema::hasColumn($jtable,'published'))    $jq->where('published', 1);
-        if (\Schema::hasColumn($jtable,'status'))       $jq->where('status', 'published');
-        if (\Schema::hasColumn($jtable,'deleted_at'))   $jq->whereNull('deleted_at');
-        $jobs = $jq->orderByDesc('id')->limit(12)->get();
+      if (class_exists(\App\Models\Job::class) && \Schema::hasTable('recruit_jobs')) {
+        $jobs = \App\Models\Job::with('company')
+          ->when(\Schema::hasColumn('recruit_jobs','is_published'), fn($q) => $q->where('is_published', 1))
+          ->when(\Schema::hasColumn('recruit_jobs','published'),    fn($q) => $q->where('published', 1))
+          ->when(\Schema::hasColumn('recruit_jobs','status'),       fn($q) => $q->where('status', 'published'))
+          ->when(\Schema::hasColumn('recruit_jobs','deleted_at'),   fn($q) => $q->whereNull('deleted_at'))
+          ->orderByDesc('id')->limit(12)->get();
+      } else {
+        // 最終フォールバック（DB::table）
+        $jtable = \Schema::hasTable('jobs') ? 'jobs' : (\Schema::hasTable('recruit_jobs') ? 'recruit_jobs' : null);
+        if ($jtable) {
+          $jq = \DB::table($jtable);
+          if (\Schema::hasColumn($jtable,'is_published')) $jq->where('is_published', 1);
+          if (\Schema::hasColumn($jtable,'published'))    $jq->where('published', 1);
+          if (\Schema::hasColumn($jtable,'status'))       $jq->where('status', 'published');
+          if (\Schema::hasColumn($jtable,'deleted_at'))   $jq->whereNull('deleted_at');
+          $jobs = $jq->orderByDesc('id')->limit(12)->get();
+        }
       }
     } catch (\Throwable $e) { $jobs = collect(); }
   }
@@ -186,11 +196,22 @@
           // ===== サムネ選定順 =====
           $thumb = null; $thumbFrom = null;
 
-          // 1) 本文から最初の画像
-          foreach (['description','body','content_html','content','html','markdown','text'] as $cf) {
-            if (!empty($j->$cf)) { $tmp = $extractFirstImg((string)$j->$cf); if ($tmp) { $thumb=$tmp; $thumbFrom='body:'.$cf; break; } }
+          // 0) Jobモデルのアクセサを最優先（image > company logo > noimage を内包）
+          if (isset($j->thumb_url) && $j->thumb_url) {
+            $thumb = $j->thumb_url;     // normalize 不要
+            $thumbFrom = 'job:thumb_url';
+          } elseif (isset($j->image_url) && $j->image_url) {
+            $thumb = $j->image_url;
+            $thumbFrom = 'job:image_url';
           }
-          $thumb = $normalize($thumb);
+
+          // 1) 本文から最初の画像
+          if (!$thumb) {
+            foreach (['description','body','content_html','content','html','markdown','text'] as $cf) {
+              if (!empty($j->$cf)) { $tmp = $extractFirstImg((string)$j->$cf); if ($tmp) { $thumb=$tmp; $thumbFrom='body:'.$cf; break; } }
+            }
+            $thumb = $normalize($thumb);
+          }
 
           // 2) サムネ候補カラム
           if (!$thumb) {
@@ -254,7 +275,13 @@
         <li style="border-top:1px solid #eef2f7;">
           <a href="{{ $showUrl }}" style="display:flex;gap:12px;align-items:center;padding:12px 16px;text-decoration:none;color:inherit;">
             <div style="width:64px;height:40px;background:#f1f5f9;border-radius:6px;overflow:hidden;flex:0 0 auto;">
-              <img src="{{ $thumb }}" alt="" style="width:100%;height:100%;object-fit:cover;object-position:center">
+              <img
+                src="{{ $thumb }}"
+                alt=""
+                style="width:100%;height:100%;object-fit:cover;object-position:center"
+                loading="lazy"
+                onerror="this.src='{{ asset('images/noimage.svg') }}'"
+              >
             </div>
             <div style="min-width:0;">
               <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ $j->title ?? '(無題)' }}</div>
