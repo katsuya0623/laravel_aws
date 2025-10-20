@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Contracts\Auth\MustVerifyEmail; // ★追加：メール確認を必須化
 // use Laravel\Sanctum\HasApiTokens; // APIトークンが必要なら有効化
 
 // ★ Filament 用
@@ -14,7 +15,10 @@ use Filament\Panel;
 // ★ 追加：プロフィール自動作成で使用
 use App\Models\Profile;
 
-class User extends Authenticatable implements FilamentUser
+// （任意）日本語文面にしたい場合は独自通知を用意して下のメソッドで使う
+// use App\Notifications\VerifyEmailJa;
+
+class User extends Authenticatable implements FilamentUser, MustVerifyEmail // ★追加：MustVerifyEmailを実装
 {
     use HasFactory, Notifiable;
     // use HasApiTokens;
@@ -41,8 +45,8 @@ class User extends Authenticatable implements FilamentUser
      * キャスト
      */
     protected $casts = [
-        'email_verified_at' => 'datetime',
-        'password'          => 'hashed', // ← 保存時に自動でハッシュ
+        'email_verified_at' => 'datetime', // ← これがあればOK
+        'password'          => 'hashed',   // ← 保存時に自動でハッシュ
         // 'is_active' => 'boolean',
     ];
 
@@ -110,4 +114,17 @@ class User extends Authenticatable implements FilamentUser
         // /admin パネルには admin のみ入場許可
         return $panel->getId() === 'admin' && $this->isAdmin();
     }
+
+    /* ========================
+       メール確認 通知（任意で日本語化）
+       ======================== */
+    // デフォルト文面でOKならこのメソッド自体なくても動きます。
+    // 日本語件名・本文にしたい場合のみコメントアウト解除して、
+    // 上の use App\Notifications\VerifyEmailJa; も有効化してください。
+    /*
+    public function sendEmailVerificationNotification(): void
+    {
+        $this->notify(new VerifyEmailJa);
+    }
+    */
 }

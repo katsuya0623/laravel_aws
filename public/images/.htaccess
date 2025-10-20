@@ -1,0 +1,11 @@
+<IfModule mod_authz_core.c>
+    Require all granted
+</IfModule>
+<IfModule mod_access_compat.c>
+    Order allow,deny
+    Allow from all
+    Satisfy any
+</IfModule>
+
+# Basic認証を無効化（このディレクトリ配下のみ）
+AuthType None

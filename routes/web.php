@@ -10,9 +10,10 @@ use App\Http\Controllers\Front\LandingController;
 use App\Http\Controllers\Front\CompanyController as FCompanyController;
 use App\Http\Controllers\Front\ApplicationController;
 use App\Http\Controllers\Front\FrontJobController;
+use App\Http\Controllers\Front\PostController as FrontPostController;   // ★ 追加（エイリアス）
 
 // Admin
-use App\Http\Controllers\Admin\PostController;
+use App\Http\Controllers\Admin\PostController as AdminPostController;   // ★ 衝突回避のエイリアス
 use App\Http\Controllers\Admin\ApplicationsController;
 use App\Http\Controllers\Admin\CompanyUserAssignController;
 use App\Http\Controllers\Admin\UserQuickAssignController;
@@ -31,6 +32,9 @@ use App\Http\Controllers\Users\SponsoredArticleController;
 use App\Filament\Resources\RecruitJobResource;
 use App\Filament\Resources\PostResource;
 
+// エンドユーザーメール認証
+use Illuminate\Foundation\Auth\EmailVerificationRequest;
+
 /*
 |--------------------------------------------------------------------------
 | Web Routes
@@ -40,6 +44,10 @@ use App\Filament\Resources\PostResource;
 // ===== Front base =====
 Route::get('/', [LandingController::class, 'index'])->name('home');
 Route::permanentRedirect('/blog', '/');
+
+// ===== ★ Posts (public) =====
+Route::get('/posts', [FrontPostController::class, 'index'])->name('front.posts.index');
+Route::get('/posts/{slugOrId}', [FrontPostController::class, 'show'])->name('front.posts.show');
 
 // ===== Company profile (企業ユーザーのみ) =====
 Route::middleware(['auth:web', 'role:company'])->group(function () {
@@ -101,7 +109,7 @@ Route::prefix('recruit_jobs')->group(function () {
             ->whereNumber('job')->name('front.jobs.destroy');
     });
 
-    // ★お気に入り→応募へ（ゲスト/ログイン両対応の入口）
+    // ★お気に入り→応募へ
     Route::post('/{slugOrId}/favorite-apply', [FavoriteController::class, 'favoriteAndApply'])
         ->where('slugOrId', '^([A-Za-z0-9\-]+|\d+)$')
         ->name('front.jobs.favorite_apply');
@@ -160,8 +168,9 @@ Route::get('/dashboard', function () {
         return redirect()->to($to);
     }
     return view('dashboard');
-})->middleware(['auth:web', 'role:enduser,company'])
-  ->name('dashboard');
+})
+->middleware(['auth:web', 'role:enduser,company', 'verified'])
+->name('dashboard');
 
 
 /* ===========================================================
@@ -198,7 +207,7 @@ Route::prefix('admin')->middleware(['auth:admin'])->name('admin.')->group(functi
     )->whereNumber('post')->name('posts.edit');
 
     // ★互換：旧Bladeの AJAX プレアップロードが残っていても落ちないように
-    Route::post('/preupload', [PostController::class, 'preupload'])->name('preupload');
+    Route::post('/preupload', [AdminPostController::class, 'preupload'])->name('preupload'); // ← エイリアス使用
 
     // 行内操作API
     Route::post('users/{user}/set-role',                 [UserQuickAssignController::class, 'setRole'])
@@ -283,13 +292,33 @@ if (!Route::has('filament.admin.auth.login')) {
         ->name('filament.admin.auth.login');
 }
 
+/**
+ * ============================
+ * Email Verification
+ * ============================
+ */
+Route::get('/email/verify', function () {
+    return view('auth.verify-email'); // resources/views/auth/verify-email.blade.php
+})->middleware('auth')->name('verification.notice');
+
+Route::get('/email/verify/{id}/{hash}', function (EmailVerificationRequest $request) {
+    $request->fulfill(); // email_verified_at をセット
+    return redirect()->intended('/');
+})->middleware(['auth', 'signed', 'throttle:6,1'])->name('verification.verify');
+
+Route::post('/email/verification-notification', function (\Illuminate\Http\Request $request) {
+    $request->user()->sendEmailVerificationNotification();
+    return back()->with('status', 'verification-link-sent');
+})->middleware(['auth', 'throttle:3,1'])->name('verification.send');
+
+
 /* ===== Breeze Profile ===== */
 Route::middleware('auth:web')->group(function () {
     if (class_exists(ProfileController::class)) {
         Route::get('/profile',   [ProfileController::class, 'edit'])->name('profile.edit');
-        Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update'); // 互換保持
+        Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
 
-        // ✅ 分割更新エンドポイント
+        // 分割更新エンドポイント
         Route::patch('/profile/basics',     [ProfileController::class, 'updateBasics'])->name('profile.update.basics');
         Route::patch('/profile/educations', [ProfileController::class, 'updateEducations'])->name('profile.update.educations');
         Route::patch('/profile/works',      [ProfileController::class, 'updateWorks'])->name('profile.update.works');

@@ -15,6 +15,7 @@ use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Toggle;
+use Filament\Forms\Get; // ★ 追加
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -22,7 +23,7 @@ use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Filters\SelectFilter;
-use Illuminate\Database\Eloquent\Builder; // ← 追加
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Str;
 
 class PostResource extends Resource
@@ -44,6 +45,7 @@ class PostResource extends Resource
                     TextInput::make('title')
                         ->label('タイトル')
                         ->required()
+                        ->maxLength(255)
                         ->live(onBlur: true)
                         ->afterStateUpdated(function ($state, callable $set, $get) {
                             if (blank($get('slug'))) {
@@ -53,8 +55,13 @@ class PostResource extends Resource
 
                     TextInput::make('slug')
                         ->label('スラッグ')
+                        // 小文字英数字とハイフンのみ
+                        ->required()
+                        ->maxLength(255)
+                        ->rule('regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/')
+                        // posts.slug のユニーク、更新時は自身を除外
                         ->unique(ignoreRecord: true)
-                        ->rule('alpha_dash'),
+                        ->helperText('英小文字とハイフンのみ（例：my-post-20251017）'),
 
                     Textarea::make('excerpt')
                         ->label('要約')
@@ -71,7 +78,9 @@ class PostResource extends Resource
                 Section::make('公開・設定')->schema([
                     DateTimePicker::make('published_at')
                         ->label('公開日時')
-                        ->seconds(false),
+                        ->seconds(false)
+                        // ステータスが「公開」のときだけ必須
+                        ->required(fn (Get $get) => $get('status') === 'published'),
 
                     Select::make('status')
                         ->label('ステータス')
@@ -80,6 +89,7 @@ class PostResource extends Resource
                             'review'    => 'レビュー',
                             'published' => '公開',
                         ])
+                        ->default('draft')
                         ->required(),
 
                     Toggle::make('is_featured')->label('特集表示'),
@@ -99,13 +109,19 @@ class PostResource extends Resource
                         ->visibility('public')
                         ->imagePreviewHeight('180')
                         ->openable()
-                        ->downloadable(),
+                        ->downloadable()
+                        // 新規作成時は必須 / 既存レコードで空なら必須
+                        ->required(function (Get $get) {
+                            /** @var ?Post $record */
+                            $record = $get('record');
+                            return $record === null || blank($record->thumbnail_path);
+                        }),
 
                     TextInput::make('reading_time')->label('推定読了分')->numeric(),
 
                     Section::make('SEO')->schema([
-                        TextInput::make('seo_title')->label('SEOタイトル'),
-                        TextInput::make('seo_description')->label('SEOディスクリプション'),
+                        TextInput::make('seo_title')->label('SEOタイトル')->maxLength(255),
+                        TextInput::make('seo_description')->label('SEOディスクリプション')->maxLength(255),
                     ]),
                 ])->columnSpan(4),
             ]),
@@ -130,12 +146,10 @@ class PostResource extends Resource
                     ->limit(30)
                     ->toggleable(isToggledHiddenByDefault: true),
 
-                // モデルのリレーション名に合わせる（sponsorCompany）
                 TextColumn::make('sponsorCompany.name')->label('スポンサー'),
 
                 IconColumn::make('is_featured')->label('特集')->boolean(),
 
-                // 公開かどうかは published_at の有無で判定
                 IconColumn::make('published_at')
                     ->label('公開')
                     ->boolean()
@@ -153,7 +167,6 @@ class PostResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                // ▼ TernaryFilter ではなく SelectFilter で「公開」「未公開」を切替
                 SelectFilter::make('pub_state')
                     ->label('公開状態')
                     ->options([
