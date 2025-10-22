@@ -4,7 +4,6 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\RecruitJobResource\Pages;
 use App\Models\Job;
-use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Section;
@@ -13,14 +12,16 @@ use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\ToggleButtons;
-use Filament\Forms\Components\FileUpload;           // ★ 追加
+use Filament\Forms\Components\FileUpload;
 use Filament\Resources\Resource;
 use Filament\Support\Enums\Alignment;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Columns\ImageColumn;            // ★ 追加
+use Filament\Tables\Columns\ImageColumn;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\HtmlString;
+use Illuminate\Validation\Rule; // ★ 追加
 
 class RecruitJobResource extends Resource
 {
@@ -31,8 +32,13 @@ class RecruitJobResource extends Resource
     protected static ?string $navigationLabel   = '求人一覧';
     protected static ?string $modelLabel        = '求人';
     protected static ?string $pluralModelLabel  = '求人';
+    protected static ?string $slug              = 'recruit-jobs';
 
-    protected static ?string $slug = 'recruit-jobs';
+    /** 必須ラベル（赤い※ + 文言） */
+    protected static function req(string $label): HtmlString
+    {
+        return new HtmlString('<span class="text-red-500">※</span> ' . e($label));
+    }
 
     protected static function has(string $col): bool
     {
@@ -47,65 +53,110 @@ class RecruitJobResource extends Resource
         return $form->schema([
             Section::make('基本情報')->schema([
                 Grid::make(12)->schema([
+                    // タイトル（必須）
                     TextInput::make('title')
-                        ->label('タイトル')
+                        ->label(self::req('タイトル'))
                         ->required()
+                        ->minLength(2)
                         ->maxLength(255)
+                        ->validationMessages([
+                            'required' => 'タイトルは必須です。',
+                            'min'      => 'タイトルは:min文字以上で入力してください。',
+                            'max'      => 'タイトルは:max文字以内で入力してください。',
+                        ])
                         ->columnSpan(8),
 
-                    // 会社：company_id 優先、無ければ company_name
+                    // 企業（company_id があれば必須）
                     Select::make('company_id')
-                        ->label('企業')
+                        ->label(self::has('company_id') ? self::req('企業') : '企業')
                         ->relationship('company', 'name')
                         ->searchable()
                         ->preload()
+                        ->required(fn () => self::has('company_id'))
+                        ->validationMessages([
+                            'required' => '企業は必須です。',
+                            'exists'   => '選択した企業が存在しません。',
+                        ])
                         ->visible(fn () => self::has('company_id'))
                         ->columnSpan(4),
 
+                    // 企業（company_name のみの場合は必須）
                     TextInput::make('company_name')
-                        ->label('企業')
+                        ->label((!self::has('company_id') && self::has('company_name')) ? self::req('企業') : '企業')
                         ->maxLength(255)
+                        ->required(fn () => !self::has('company_id') && self::has('company_name'))
+                        ->validationMessages([
+                            'required' => '企業は必須です。',
+                            'max'      => '企業名は:max文字以内で入力してください。',
+                        ])
                         ->visible(fn () => !self::has('company_id') && self::has('company_name'))
                         ->columnSpan(4),
                 ]),
 
+                // 概要（必須）
                 Textarea::make('excerpt')
-                    ->label('概要')
+                    ->label(self::has('excerpt') ? self::req('概要') : '概要')
                     ->rows(3)
+                    ->required(fn () => self::has('excerpt'))
+                    ->maxLength(1000)
+                    ->validationMessages([
+                        'required' => '概要は必須です。',
+                        'max'      => '概要は:max文字以内で入力してください。',
+                    ])
                     ->columnSpanFull()
                     ->visible(fn () => self::has('excerpt')),
 
+                // 本文（必須）
                 Textarea::make('description')
-                    ->label('本文（仕事内容・必須スキル・歓迎・福利厚生など）')
+                    ->label(self::req('本文（仕事内容・必須スキル・歓迎・福利厚生など）'))
                     ->rows(10)
                     ->required()
+                    ->minLength(30)
+                    ->validationMessages([
+                        'required' => '本文は必須です。',
+                        'min'      => '本文は:min文字以上で入力してください。',
+                    ])
                     ->columnSpanFull(),
 
-                // ★ 画像アップロード
+                // 画像（任意）
                 FileUpload::make('image_path')
                     ->label('求人画像')
                     ->image()
-                    ->directory('recruit_jobs')           // storage/app/public/recruit_jobs
+                    ->directory('recruit_jobs')
                     ->disk('public')
                     ->visibility('public')
                     ->preserveFilenames()
                     ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp'])
-                    ->maxSize(2048)                        // 2MB
+                    ->maxSize(2048)
                     ->helperText('対応: jpg / jpeg / png / webp、2MB以内')
+                    ->validationMessages([
+                        'image' => '画像ファイルを選択してください。',
+                        'mimes' => '画像形式は jpg / jpeg / png / webp に対応しています。',
+                        'max'   => '画像サイズは :max KB 以内にしてください。',
+                    ])
                     ->columnSpanFull()
                     ->visible(fn () => self::has('image_path')),
             ])->columns(1),
 
             Section::make('詳細')->schema([
                 Grid::make(12)->schema([
+                    // 勤務地：必須 + 文字列 + 長さ
                     TextInput::make('location')
-                        ->label('勤務地')
+                        ->label(self::has('location') ? self::req('勤務地') : '勤務地')
+                        ->required(fn () => self::has('location'))
+                        ->rule('string')
                         ->maxLength(255)
+                        ->validationMessages([
+                            'required' => '勤務地は必須です。',
+                            'string'   => '勤務地は文字列で入力してください。',
+                            'max'      => '勤務地は:max文字以内で入力してください。',
+                        ])
                         ->visible(fn () => self::has('location'))
                         ->columnSpan(6),
 
+                    // 雇用形態（必須）
                     Select::make('employment_type')
-                        ->label('雇用形態')
+                        ->label(self::has('employment_type') ? self::req('雇用形態') : '雇用形態')
                         ->options([
                             '正社員'     => '正社員',
                             '契約社員'   => '契約社員',
@@ -114,17 +165,29 @@ class RecruitJobResource extends Resource
                             'インターン' => 'インターン',
                         ])
                         ->native(false)
+                        ->required(fn () => self::has('employment_type'))
+                        ->validationMessages([
+                            'required' => '雇用形態は必須です。',
+                            'in'       => '雇用形態の値が不正です。',
+                        ])
                         ->visible(fn () => self::has('employment_type'))
                         ->columnSpan(3),
 
+                    // 働き方：必須 + 許可値のみ
                     Select::make('work_style')
-                        ->label('働き方')
+                        ->label(self::has('work_style') ? self::req('働き方') : '働き方')
                         ->options([
                             '出社'         => '出社',
                             'フルリモート' => 'フルリモート',
                             'ハイブリッド' => 'ハイブリッド',
                         ])
                         ->native(false)
+                        ->required(fn () => self::has('work_style'))
+                        ->rules([Rule::in(['出社','フルリモート','ハイブリッド'])])
+                        ->validationMessages([
+                            'required' => '働き方は必須です。',
+                            'in'       => '働き方の値が不正です。',
+                        ])
                         ->visible(fn () => self::has('work_style'))
                         ->columnSpan(3),
                 ]),
@@ -134,6 +197,10 @@ class RecruitJobResource extends Resource
                         ->label('給与（下限）')
                         ->numeric()
                         ->minValue(0)
+                        ->validationMessages([
+                            'numeric'  => '給与（下限）は数値で入力してください。',
+                            'min'      => '給与（下限）は0以上で入力してください。',
+                        ])
                         ->visible(fn () => self::has('salary_from'))
                         ->columnSpan(4),
 
@@ -141,40 +208,66 @@ class RecruitJobResource extends Resource
                         ->label('給与（上限）')
                         ->numeric()
                         ->minValue(0)
+                        ->rule('gte:salary_from') // 上限 ≥ 下限
+                        ->validationMessages([
+                            'numeric' => '給与（上限）は数値で入力してください。',
+                            'min'     => '給与（上限）は0以上で入力してください。',
+                            'gte'     => '給与（上限）は下限以上にしてください。',
+                        ])
                         ->visible(fn () => self::has('salary_to'))
                         ->columnSpan(4),
 
+                    // 単位（必須）
                     Select::make('salary_unit')
-                        ->label('単位')
+                        ->label(self::has('salary_unit') ? self::req('単位') : '単位')
                         ->options([
                             '年収' => '年収',
                             '月収' => '月収',
                             '時給' => '時給',
                         ])
                         ->native(false)
+                        ->required(fn () => self::has('salary_unit'))
+                        ->validationMessages([
+                            'required' => '単位は必須です。',
+                            'in'       => '単位の値が不正です。',
+                        ])
                         ->visible(fn () => self::has('salary_unit'))
                         ->columnSpan(4),
                 ]),
 
-                Grid::make(12)->schema([
-                    TextInput::make('apply_url')
-                        ->label('応募ページURL')
-                        ->url()
-                        ->maxLength(512)
-                        ->visible(fn () => self::has('apply_url'))
-                        ->columnSpan(6),
-
-                    TextInput::make('external_url')
-                        ->label('外部求人URL')
-                        ->url()
-                        ->maxLength(512)
-                        ->visible(fn () => self::has('external_url'))
-                        ->columnSpan(6),
-                ]),
-
+                // タグ：必須 + スペース区切り（最大10個 / 1つ20文字以内 / 区切り記号禁止）
                 TextInput::make('tags')
-                    ->label('タグ（スペース区切り）')
+                    ->label(self::has('tags') ? self::req('タグ（スペース区切り）') : 'タグ（スペース区切り）')
+                    ->placeholder('例：完全週休2日 服装自由 フレックス')
+                    ->required(fn () => self::has('tags'))
                     ->maxLength(255)
+                    ->rules([
+                        'required',
+                        'string',
+                        function (string $attribute, $value, \Closure $fail) {
+                            $raw  = trim((string) $value);
+                            if ($raw === '') {
+                                $fail('タグを入力してください。'); return;
+                            }
+                            $tags = preg_split('/\s+/u', $raw);
+                            if (count($tags) > 10) {
+                                $fail('タグは最大10個までです。'); return;
+                            }
+                            foreach ($tags as $t) {
+                                if (mb_strlen($t) > 20) {
+                                    $fail("タグ「{$t}」が長すぎます（最大20文字）。"); return;
+                                }
+                                if (preg_match('/[,\|、。]/u', $t)) {
+                                    $fail("タグ「{$t}」に区切り記号は使えません。スペースで区切ってください。"); return;
+                                }
+                            }
+                        },
+                    ])
+                    // 保存時：空白を正規化して1本化
+                    ->dehydrateStateUsing(function ($state) {
+                        $tags = array_filter(preg_split('/\s+/u', trim((string) $state)));
+                        return implode(' ', $tags);
+                    })
                     ->visible(fn () => self::has('tags')),
             ])->columns(1),
 
@@ -215,6 +308,11 @@ class RecruitJobResource extends Resource
                     ->label('スラッグ（未入力なら自動生成）')
                     ->maxLength(190)
                     ->helperText('保存時に空なら「title」から自動生成します。')
+                    ->validationMessages([
+                        'max'       => 'スラッグは:max文字以内で入力してください。',
+                        'alpha_dash'=> 'スラッグは英数字・ハイフン・アンダースコアのみ使用できます。',
+                        'unique'    => 'このスラッグは既に使用されています。',
+                    ])
                     ->visible(fn () => self::has('slug')),
             ])->columns(1),
         ]);
@@ -228,8 +326,6 @@ class RecruitJobResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('id')->label('ID')->sortable(),
-
-                // ★ サムネイル
                 ImageColumn::make('image_path')
                     ->label('画像')
                     ->disk('public')
@@ -237,52 +333,33 @@ class RecruitJobResource extends Resource
                     ->square()
                     ->toggleable()
                     ->visible(fn () => self::has('image_path')),
-
-                Tables\Columns\TextColumn::make('title')->label('タイトル')->searchable()->wrap(),
-
-                Tables\Columns\TextColumn::make('company.name')
-                    ->label('企業')->toggleable()->sortable()
+                TextColumn::make('title')->label('タイトル')->searchable()->wrap(),
+                TextColumn::make('company.name')->label('企業')->toggleable()->sortable()
                     ->visible(fn () => self::has('company_id')),
-
-                Tables\Columns\TextColumn::make('company_name')
-                    ->label('企業')->toggleable()->sortable()
+                TextColumn::make('company_name')->label('企業')->toggleable()->sortable()
                     ->visible(fn () => !self::has('company_id') && self::has('company_name')),
-
-                Tables\Columns\TextColumn::make('location')
-                    ->label('勤務地')->toggleable()
+                TextColumn::make('location')->label('勤務地')->toggleable()
                     ->visible(fn () => self::has('location')),
-
-                Tables\Columns\TextColumn::make('salary_from')
-                    ->label('下限')->numeric()->toggleable()
+                TextColumn::make('salary_from')->label('下限')->numeric()->toggleable()
                     ->visible(fn () => self::has('salary_from')),
-
-                Tables\Columns\TextColumn::make('salary_to')
-                    ->label('上限')->numeric()->toggleable()
+                TextColumn::make('salary_to')->label('上限')->numeric()->toggleable()
                     ->visible(fn () => self::has('salary_to')),
-
-                Tables\Columns\TextColumn::make('salary_unit')
-                    ->label('単位')->toggleable()
+                TextColumn::make('salary_unit')->label('単位')->toggleable()
                     ->visible(fn () => self::has('salary_unit')),
-
                 $hasStatus
                     ? Tables\Columns\BadgeColumn::make('status')->label('状態')
                         ->colors(['secondary' => 'draft', 'success' => 'published', 'danger' => 'closed'])
                     : Tables\Columns\BadgeColumn::make('is_published')->label('公開')
                         ->colors(['secondary' => 0, 'success' => 1])
                         ->formatStateUsing(fn ($s) => $s ? '公開' : '下書き'),
-
-                Tables\Columns\TextColumn::make('published_at')
-                    ->label('公開')->dateTime('Y-m-d H:i')->sortable()
+                TextColumn::make('published_at')->label('公開')->dateTime('Y-m-d H:i')->sortable()
                     ->visible(fn () => self::has('published_at')),
-
-                Tables\Columns\TextColumn::make('updated_at')
-                    ->label('更新')->since()->sortable()->alignment(Alignment::End),
+                TextColumn::make('updated_at')->label('更新')->since()->sortable()->alignment(Alignment::End),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('status')->label('状態')
                     ->options(['draft'=>'下書き','published'=>'公開','closed'=>'募集停止'])
                     ->visible(fn () => $hasStatus),
-
                 Tables\Filters\SelectFilter::make('is_published')->label('公開')
                     ->options([1 => '公開', 0 => '下書き'])
                     ->visible(fn () => !$hasStatus && $hasIsPublished),
@@ -303,73 +380,5 @@ class RecruitJobResource extends Resource
             'create' => Pages\CreateRecruitJob::route('/create'),
             'edit'   => Pages\EditRecruitJob::route('/{record}/edit'),
         ];
-    }
-}
-
-namespace App\Filament\Resources\RecruitJobResource\Pages;
-
-use App\Filament\Resources\RecruitJobResource;
-use Filament\Actions;
-use Filament\Resources\Pages\CreateRecord;
-use Filament\Resources\Pages\EditRecord;
-use Filament\Resources\Pages\ListRecords;
-use Illuminate\Support\Str;
-
-class ListRecruitJobs extends ListRecords
-{
-    protected static string $resource = RecruitJobResource::class;
-
-    protected function getHeaderActions(): array
-    {
-        return [ Actions\CreateAction::make()->label('新規作成') ];
-    }
-}
-
-class CreateRecruitJob extends CreateRecord
-{
-    protected static string $resource = RecruitJobResource::class;
-
-    /** 保存直前にデータを整形（空文字→null、slug自動生成） */
-    protected function mutateFormDataBeforeCreate(array $data): array
-    {
-        foreach ($data as $k => $v) {
-            if ($v === '') $data[$k] = null;
-        }
-        if (array_key_exists('slug', $data) && empty($data['slug'] ?? null) && !empty($data['title'] ?? null)) {
-            $data['slug'] = Str::slug(($data['title'] ?? '') . '-' . Str::random(6));
-        }
-        return $data;
-    }
-
-    protected function getCreatedNotificationTitle(): ?string
-    {
-        return '求人を作成しました';
-    }
-}
-
-class EditRecruitJob extends EditRecord
-{
-    protected static string $resource = RecruitJobResource::class;
-
-    /** 更新直前にデータを整形（空文字→null、slug自動生成） */
-    protected function mutateFormDataBeforeSave(array $data): array
-    {
-        foreach ($data as $k => $v) {
-            if ($v === '') $data[$k] = null;
-        }
-        if (array_key_exists('slug', $data) && empty($data['slug'] ?? null) && !empty($data['title'] ?? null)) {
-            $data['slug'] = Str::slug(($data['title'] ?? '') . '-' . Str::random(6));
-        }
-        return $data;
-    }
-
-    protected function getHeaderActions(): array
-    {
-        return [ Actions\DeleteAction::make()->label('削除') ];
-    }
-
-    protected function getSavedNotificationTitle(): ?string
-    {
-        return '保存しました';
     }
 }

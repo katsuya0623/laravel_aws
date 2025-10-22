@@ -14,12 +14,19 @@ class Application extends Model
      */
     protected $fillable = [
         'job_id',
-        'user_id',   // 追加：ログインユーザーを紐づけ
+        'user_id',   // ログインユーザー紐付け（任意）
         'name',
+        'kana',              // ← 追加：フリガナ
         'email',
         'phone',
-        'message',
-        'status',    // 追加：初期値 'applied' などを保存
+        'current_status',    // ← 追加：現在の状況
+        'employment_type',   // ← 追加：希望雇用形態
+        'motivation',        // ← 追加：志望動機
+        'pr',                // ← 追加：自己PR
+        'resume_path',       // ← 追加：添付ファイル
+        'ip',                // ← 追加：送信元IP
+        'message',           // 既存（任意メッセージ）
+        'status',            // 既存（ステータス）
     ];
 
     /**
@@ -31,7 +38,7 @@ class Application extends Model
     }
 
     /**
-     * 応募者（多:1）※ users にレコードがある場合のみ利用
+     * 応募者（多:1）
      */
     public function user()
     {

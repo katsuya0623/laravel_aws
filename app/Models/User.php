@@ -127,4 +127,12 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail // �
         $this->notify(new VerifyEmailJa);
     }
     */
+    // 会社（多対多）：pivot company_user(company_id, user_id) 用
+public function companies()
+{
+    // 第3, 第4引数でキー名を明示（user_id, company_id）
+    return $this->belongsToMany(\App\Models\Company::class, 'company_user', 'user_id', 'company_id')
+                ->withTimestamps();
+}
+
 }

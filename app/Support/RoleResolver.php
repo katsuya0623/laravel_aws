@@ -31,14 +31,17 @@ class RoleResolver
             return 'admin';
         }
 
-        // 3) 会社所属（多対多／1対多）を見て company 優先
-        //    - users ↔ companies の pivot がある場合
-        if (method_exists($user, 'companies')) {
-            try {
-                if ($user->companies()->exists()) return 'company';
-            } catch (\Throwable $e) { /* ignore */ }
+        // 3) 会社所属を見て company 優先
+        //    3-1) users ↔ companies の pivot がある場合（慣例: companies()/companyProfiles() どちらでもOKに）
+        foreach (['companies', 'companyProfiles'] as $rel) {
+            if (method_exists($user, $rel)) {
+                try {
+                    if ($user->{$rel}()->exists()) return 'company';
+                } catch (\Throwable $e) { /* ignore */ }
+            }
         }
-        //    - users テーブルに company_id 等の外部キーがある場合（設定で指定）
+
+        //    3-2) users テーブルに company_id 等の外部キーがある場合（設定で指定）
         $cfg   = Config::get('roles.is_company_resolver', []);
         $byCol = Arr::get($cfg, 'by_column'); // 例: 'company_id'
         if ($byCol && Schema::hasColumn($user->getTable(), $byCol) && filled($user->{$byCol} ?? null)) {

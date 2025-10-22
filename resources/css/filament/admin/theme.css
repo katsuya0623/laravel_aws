@@ -1,0 +1,14 @@
+/* ===== 必須ラベルを「赤い※」に統一表示 ===== */
+
+/* Filamentの既定「必須」インジケータを隠す */
+.fi-fo-field-wrp-label .fi-fo-required-indicator {
+  display: none !important;
+}
+
+/* 必須インジケータを持つラベルの先頭に ※ を付与 */
+label.fi-fo-field-wrp-label:has(.fi-fo-required-indicator)::before {
+  content: "※";
+  color: #ef4444; /* red-500 */
+  margin-right: .25rem;
+  font-weight: 600;
+}

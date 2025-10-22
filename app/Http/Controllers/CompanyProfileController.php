@@ -33,31 +33,48 @@ class CompanyProfileController extends Controller
     /** 共通の保存処理 */
     private function saveProfile(Request $request)
     {
-        // ★ CompanyProfile のカラム名に合わせる（employees は整数）
-        $data = $request->validate([
-            'company_name'       => ['nullable','string','max:255'],
-            'company_name_kana'  => ['nullable','string','max:255'],
-            'description'        => ['nullable','string'],
-            'website_url'        => ['nullable','string','max:255'],
-            'email'              => ['nullable','string','max:255'],
-            'tel'                => ['nullable','string','max:255'],
-            'postal_code'        => ['nullable','string','max:20'],
-            'prefecture'         => ['nullable','string','max:255'],
-            'city'               => ['nullable','string','max:255'],
-            'address1'           => ['nullable','string','max:255'],
-            'address2'           => ['nullable','string','max:255'],
-            'industry'           => ['nullable','string','max:255'],
-            'employees'          => ['nullable','integer'],
-            'founded_on'         => ['nullable','date'],
+        // ★ サーバ側で30文字超を必ず弾く
+        $data = $request->validate(
+            [
+                'company_name'       => ['nullable', 'string', 'max:30'],   // ← 30に変更
+                'company_name_kana'  => ['nullable', 'string', 'max:255'],
+                'description'        => ['nullable', 'string'],
+                'website_url'        => ['nullable', 'string', 'max:255'],
+                'email'              => ['nullable', 'string', 'max:255'],
+                'tel'                => ['nullable', 'string', 'max:255'],
+                'postal_code'        => ['nullable', 'string', 'max:20'],
+                'prefecture'         => ['nullable', 'string', 'max:255'],
+                'city'               => ['nullable', 'string', 'max:255'],
+                'address1'           => ['nullable', 'string', 'max:255'],
+                'address2'           => ['nullable', 'string', 'max:255'],
+                'industry'           => ['nullable', 'string', 'max:255'],
+                'employees'          => ['nullable', 'integer'],
+                'founded_on'         => ['nullable', 'date'],
 
-            // 画像（10MB / SVG可）
-            'logo' => [
-                'nullable','file','max:10240',
-                'mimes:jpg,jpeg,png,webp,svg,svgz',
-                'mimetypes:image/jpeg,image/png,image/webp,image/svg+xml,application/xml,text/xml',
+                // 画像（10MB / SVG可）
+                'logo' => [
+                    'nullable', 'file', 'max:10240',
+                    'mimes:jpg,jpeg,png,webp,svg,svgz',
+                    'mimetypes:image/jpeg,image/png,image/webp,image/svg+xml,application/xml,text/xml',
+                ],
+                'remove_logo' => ['sometimes', 'boolean'],
             ],
-            'remove_logo' => ['sometimes','boolean'],
-        ]);
+            [
+                // ★ エラーメッセージ
+                'company_name.max' => '会社名は30文字以内で入力してください。',
+            ],
+            [
+                // ★ 属性名（任意）
+                'company_name' => '会社名',
+            ]
+        );
+
+        // 念のための最終ガード（手動で詰め込まれた場合に備える）
+        if (isset($data['company_name']) && mb_strlen((string)$data['company_name']) > 30) {
+            return back()
+                ->withErrors(['company_name' => '会社名は30文字以内で入力してください。'])
+                ->withInput();
+        }
 
         // ユーザーごとのレコードを取得 or 新規作成
         $company = CompanyProfile::firstOrNew(['user_id' => Auth::id()]);

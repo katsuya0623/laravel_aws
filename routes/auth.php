@@ -1,59 +1,94 @@
 <?php
 
-use App\Http\Controllers\Auth\AuthenticatedSessionController;
-use App\Http\Controllers\Auth\ConfirmablePasswordController;
-use App\Http\Controllers\Auth\EmailVerificationNotificationController;
-use App\Http\Controllers\Auth\EmailVerificationPromptController;
-use App\Http\Controllers\Auth\NewPasswordController;
-use App\Http\Controllers\Auth\PasswordController;
-use App\Http\Controllers\Auth\PasswordResetLinkController;
-use App\Http\Controllers\Auth\RegisteredUserController;
-use App\Http\Controllers\Auth\VerifyEmailController;
-use Illuminate\Support\Facades\Route;
+return [
 
-Route::middleware('guest')->group(function () {
-    Route::get('register', [RegisteredUserController::class, 'create'])
-        ->name('register');
+    /*
+    |--------------------------------------------------------------------------
+    | Default Authentication Settings
+    |--------------------------------------------------------------------------
+    */
+    'defaults' => [
+        // 企業・エンドユーザーは基本 web ガードで運用
+        'guard' => env('AUTH_GUARD', 'web'),
+        'passwords' => env('AUTH_PASSWORD_BROKER', 'users'),
+    ],
 
-    Route::post('register', [RegisteredUserController::class, 'store']);
+    /*
+    |--------------------------------------------------------------------------
+    | Authentication Guards
+    |--------------------------------------------------------------------------
+    | Supported: "session"
+    */
+    'guards' => [
+        // 一般ユーザー（企業・エンドユーザー共通）
+        'web' => [
+            'driver'   => 'session',
+            'provider' => 'users',
+        ],
 
-    Route::get('login', [AuthenticatedSessionController::class, 'create'])
-        ->name('login');
+        // エンドユーザー専用（必要なら残す）
+        'enduser' => [
+            'driver'   => 'session',
+            'provider' => 'users',
+        ],
 
-    Route::post('login', [AuthenticatedSessionController::class, 'store']);
+        // 企業ユーザー専用（webと同じDB参照だが別ガードで管理したい場合）
+        'company' => [
+            'driver'   => 'session',
+            'provider' => 'users',
+        ],
 
-    Route::get('forgot-password', [PasswordResetLinkController::class, 'create'])
-        ->name('password.request');
+        // 管理者
+        'admin' => [
+            'driver'   => 'session',
+            'provider' => 'admins',
+        ],
+    ],
 
-    Route::post('forgot-password', [PasswordResetLinkController::class, 'store'])
-        ->name('password.email');
+    /*
+    |--------------------------------------------------------------------------
+    | User Providers
+    |--------------------------------------------------------------------------
+    | Supported: "eloquent", "database"
+    */
+    'providers' => [
+        // 共通ユーザー（エンドユーザー／企業ユーザー）
+        'users' => [
+            'driver' => 'eloquent',
+            'model'  => env('AUTH_MODEL', App\Models\User::class),
+        ],
 
-    Route::get('reset-password/{token}', [NewPasswordController::class, 'create'])
-        ->name('password.reset');
+        // 管理者
+        'admins' => [
+            'driver' => 'eloquent',
+            'model'  => App\Models\Admin::class,
+        ],
+    ],
 
-    Route::post('reset-password', [NewPasswordController::class, 'store'])
-        ->name('password.store');
-});
+    /*
+    |--------------------------------------------------------------------------
+    | Password Reset Settings
+    |--------------------------------------------------------------------------
+    */
+    'passwords' => [
+        'users' => [
+            'provider' => 'users',
+            'table'    => env('AUTH_PASSWORD_RESET_TOKEN_TABLE', 'password_reset_tokens'),
+            'expire'   => 60,
+            'throttle' => 60,
+        ],
+        'admins' => [
+            'provider' => 'admins',
+            'table'    => env('AUTH_PASSWORD_RESET_TOKEN_TABLE', 'password_reset_tokens'),
+            'expire'   => 60,
+            'throttle' => 60,
+        ],
+    ],
 
-Route::middleware('auth')->group(function () {
-    Route::get('verify-email', EmailVerificationPromptController::class)
-        ->name('verification.notice');
-
-    Route::get('verify-email/{id}/{hash}', VerifyEmailController::class)
-        ->middleware(['signed', 'throttle:6,1'])
-        ->name('verification.verify');
-
-    Route::post('email/verification-notification', [EmailVerificationNotificationController::class, 'store'])
-        ->middleware('throttle:6,1')
-        ->name('verification.send');
-
-    Route::get('confirm-password', [ConfirmablePasswordController::class, 'show'])
-        ->name('password.confirm');
-
-    Route::post('confirm-password', [ConfirmablePasswordController::class, 'store']);
-
-    Route::put('password', [PasswordController::class, 'update'])->name('password.update');
-
-    Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])
-        ->name('logout');
-});
+    /*
+    |--------------------------------------------------------------------------
+    | Password Confirmation Timeout
+    |--------------------------------------------------------------------------
+    */
+    'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
+];

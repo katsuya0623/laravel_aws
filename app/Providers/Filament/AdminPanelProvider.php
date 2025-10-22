@@ -8,9 +8,10 @@ use Filament\Http\Middleware\Authenticate;
 use Filament\Support\Colors\Color;
 use Filament\Navigation\NavigationGroup;
 use Filament\Navigation\NavigationItem;
+use Filament\Pages;
 
-use App\Filament\Pages\AdminDashboard; // ← 自作ダッシュボード Page
-use App\Filament\Resources\PostResource; // ← 追加：PostResource を明示的に use
+use App\Filament\Resources\PostResource;
+use App\Filament\Widgets\AdminQuickLinks; // ★ 追加
 
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -32,31 +33,35 @@ class AdminPanelProvider extends PanelProvider
             ->brandName('nibi Admin')
             ->colors(['primary' => Color::Indigo])
 
-            // 自動検出
+            // 相対テーマは一旦停止（404対策）
+            // ->theme('themes/admin/theme.css')
+
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
-            ->discoverPages(in: app_path('Filament/Pages'),     for: 'App\\Filament\\Pages')
+            // 自作AdminDashboardを拾わせない
+            // ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
 
-            // ← 追加：自動検出が拾えない場合に備えて明示登録
             ->resources([
                 PostResource::class,
             ])
 
-            // ダッシュボード（/admin 以下のホームはこの Page）
+            // 純正ダッシュボードのみ明示
             ->pages([
-                AdminDashboard::class,
+                Pages\Dashboard::class,
             ])
 
-            // ロゴ/ホームクリック時は必ず /admin へ
+            // ★ Admin専用のクイックリンクWidgetを表示
+            ->widgets([
+                AdminQuickLinks::class,
+            ])
+
             ->homeUrl('/admin')
 
-            // 追加メニュー
             ->navigationItems([
-                // ← 追加：記事（PostResource）へのリンクを安全に
                 NavigationItem::make('記事')
                     ->group('Post')
                     ->icon('heroicon-o-document-text')
-                    ->url(fn () => PostResource::getUrl()) // ルート名直書きを回避
+                    ->url(fn () => PostResource::getUrl())
                     ->isActiveWhen(fn () => request()->is('admin/posts*'))
                     ->sort(1),
 
@@ -81,7 +86,6 @@ class AdminPanelProvider extends PanelProvider
                 NavigationGroup::make('Management'),
             ])
 
-            // ミドルウェア
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,

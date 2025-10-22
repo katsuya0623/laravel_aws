@@ -2,7 +2,7 @@
     <form method="POST" action="{{ route('register') }}">
         @csrf
 
-        <!-- 氏名 -->
+        <!-- 氏名（日本語OK・記号/絵文字NGはサーバで検証。ここでは20文字制限のみ） -->
         <div>
             <x-input-label for="name">
                 氏名 <span class="text-red-500">*</span>
@@ -11,7 +11,9 @@
                 type="text"
                 name="name"
                 :value="old('name')"
-                required autofocus autocomplete="name" />
+                placeholder="例：山田 太郎"
+                required autofocus autocomplete="name"
+                maxlength="20" />
             <x-input-error :messages="$errors->get('name')" class="mt-2" />
         </div>
 
@@ -24,11 +26,12 @@
                 type="email"
                 name="email"
                 :value="old('email')"
+                placeholder="例：user@example.com"
                 required autocomplete="username" />
             <x-input-error :messages="$errors->get('email')" class="mt-2" />
         </div>
 
-        <!-- パスワード -->
+        <!-- パスワード（8文字以上・英大文字と小文字を含む。数字・記号は任意） -->
         <div class="mt-4">
             <x-input-label for="password">
                 パスワード <span class="text-red-500">*</span>
@@ -36,7 +39,13 @@
             <x-text-input id="password" class="block mt-1 w-full"
                 type="password"
                 name="password"
-                required autocomplete="new-password" />
+                required autocomplete="new-password"
+                placeholder="8文字以上、英大文字・小文字を含む（数字・記号は任意）"
+                pattern="(?=.*[a-z])(?=.*[A-Z]).{8,}"
+                title="8文字以上で、英大文字と小文字をそれぞれ1文字以上含めてください。" />
+            <p class="text-sm text-gray-500 mt-1">
+                ※ 例：Abcdefgh ／ AbcDEFGH1!（数字・記号は任意）
+            </p>
             <x-input-error :messages="$errors->get('password')" class="mt-2" />
         </div>
 
@@ -48,7 +57,8 @@
             <x-text-input id="password_confirmation" class="block mt-1 w-full"
                 type="password"
                 name="password_confirmation"
-                required autocomplete="new-password" />
+                required autocomplete="new-password"
+                placeholder="もう一度同じパスワードを入力してください" />
             <x-input-error :messages="$errors->get('password_confirmation')" class="mt-2" />
         </div>
 
