@@ -9,6 +9,5 @@ use App\Http\Controllers\Front\TagController;
 Route::get('/blog', [HomeController::class, 'index'])->name('front.home');
 
 Route::get('/posts', [FrontPostController::class, 'index'])->name('front.posts.index');
-Route::get('/posts/{slug}', [FrontPostController::class, 'show'])->name('front.posts.show');
 Route::get('/category/{slug}', [CategoryController::class, 'show'])->name('front.category.show');
 Route::get('/tag/{slug}', [TagController::class, 'show'])->name('front.tag.show');

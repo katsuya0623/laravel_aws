@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Carbon;
 use App\Models\Application;
 use App\Models\Job;
 
@@ -33,7 +34,7 @@ class ApplicationController extends Controller
         $user = $request->user();
         if (!$user) return redirect()->route('login');
 
-        $app = new Application();
+        $app   = new Application();
         $table = $app->getTable();
 
         $query = Application::query()->latest('id');
@@ -113,8 +114,8 @@ class ApplicationController extends Controller
                 abort(404, 'Job not found');
             }
 
-            $user     = $request->user();
-            $profile  = $user?->profile;
+            $user    = $request->user();
+            $profile = $user?->profile;
 
             // バリデーション（email は未ログインなら必須）
             $rules = [
@@ -130,7 +131,7 @@ class ApplicationController extends Controller
                 'education'               => ['nullable', 'string', 'max:2000'],
                 'current_status'          => ['nullable', 'string', 'max:100'],
                 'desired_employment_type' => ['nullable', 'string', 'max:100'],
-                'desired_type'            => ['nullable', 'string', 'max:100'], // ← Bladeのnameを吸収
+                'desired_type'            => ['nullable', 'string', 'max:100'], // Bladeのnameを吸収
                 'motivation'              => ['nullable', 'string', 'max:3000'],
                 'self_pr'                 => ['nullable', 'string', 'max:3000'],
             ];
@@ -153,12 +154,19 @@ class ApplicationController extends Controller
 
             // プロフィールからの自動補完（フォーム未入力なら埋める）
             if ($profile) {
+                // 揺れを吸収
+                $profileBirthday = $profile->birthday ?? $profile->birthdate ?? null;
+                $profileAddress  = $profile->address  ?? $profile->address_full ?? null;
+
+                // ★ 学歴（JSON配列）からサマリを構築
+                $educationSummary = $data['education'] ?? $this->buildEducationSummaryFromJson($profile);
+
                 foreach ([
-                    'gender'   => $profile->gender ?? null,
-                    'birthday' => $profile->birthday ?? null,
-                    'address'  => $profile->address ?? null,
-                    'education'=> $profile->education ?? null,
-                    'phone'    => $profile->phone ?? null,
+                    'gender'    => $profile->gender ?? null,
+                    'birthday'  => $profileBirthday,
+                    'address'   => $profileAddress,
+                    'education' => $educationSummary,
+                    'phone'     => $profile->phone ?? null,
                 ] as $k => $v) {
                     if (empty($data[$k]) && !empty($v)) {
                         $data[$k] = $v;
@@ -188,9 +196,9 @@ class ApplicationController extends Controller
             $app = new Application();
 
             // 必須系（存在する列だけ安全にセット）
-            if ($this->hasCol($table, 'job_id'))         $app->job_id = $job->id;
+            if ($this->hasCol($table, 'job_id'))           $app->job_id  = $job->id;
             if ($this->hasCol($table, 'user_id') && $user) $app->user_id = $user->id;
-            if ($this->hasCol($table, 'email'))          $app->email = $email;
+            if ($this->hasCol($table, 'email'))            $app->email   = $email;
 
             foreach (['name','phone','message'] as $k) {
                 if ($this->hasCol($table, $k) && isset($data[$k])) {
@@ -244,9 +252,9 @@ class ApplicationController extends Controller
             DB::rollBack();
 
             Log::error('[Application apply failed]', [
-                'error'   => $e->getMessage(),
-                'job_id'  => $job->id ?? null,
-                'user_id' => $request->user()->id ?? null,
+                'error'        => $e->getMessage(),
+                'job_id'       => $job->id ?? null,
+                'user_id'      => $request->user()->id ?? null,
                 'payload_keys' => array_keys($request->except(['_token'])),
             ]);
 
@@ -258,13 +266,91 @@ class ApplicationController extends Controller
 
     /**
      * 応募フォーム表示（GET） /recruit_jobs/{job}/apply
+     * - 学歴サマリを JSON（profiles.educations）から作成して一時属性へ
+     * - birthdate/birthday、address/address_full も補完
      */
     public function create(Request $request, Job $job)
     {
-        return view('front.jobs.apply', [
-            'job'     => $job,
-            'user'    => $request->user(),
-            'profile' => $request->user()?->profile, // 自動入力用
+        $user    = $request->user();
+        $profile = $user?->profile;
+
+        $eduSummary = null;
+
+        if ($profile) {
+            // ① 既に単一カラムがあればそれを優先
+            $eduSummary = $profile->education_summary
+                ?? $profile->education
+                ?? null;
+
+            // ② 無ければ JSON（educations）から作る
+            if (!$eduSummary) {
+                $eduSummary = $this->buildEducationSummaryFromJson($profile);
+            }
+
+            // ③ 見つかったら一時属性に入れて Blade で使えるように
+            if ($eduSummary) {
+                $profile->setAttribute('education_summary', $eduSummary);
+            }
+
+            // ④ birthdate / address_full の揺れ補完
+            if (($profile->birthdate ?? null) && !isset($profile->birthday)) {
+                $profile->setAttribute('birthday', $profile->birthdate);
+            }
+            if (($profile->address_full ?? null) && !isset($profile->address)) {
+                $profile->setAttribute('address', $profile->address_full);
+            }
+        }
+
+        Log::debug('[apply.create] education summary source', [
+            'user_id' => $user?->id,
+            'summary' => $eduSummary,
+            'source'  => $eduSummary ? 'profiles.educations(json or single field)' : null,
         ]);
+
+        return view('front.jobs.apply', [
+            'job'        => $job,
+            'user'       => $user,
+            'profile'    => $profile,
+            'eduSummary' => $eduSummary,
+        ]);
+    }
+
+    /**
+     * profiles.educations(JSON) から学歴サマリ文字列を作る
+     * 期待スキーマ: [{school, faculty, department, period_from, period_to, status}, ...]
+     */
+    private function buildEducationSummaryFromJson($profile): ?string
+    {
+        $rows = $profile?->educations; // casts: array
+        if (!is_array($rows) || empty($rows)) {
+            return null;
+        }
+
+        // 最新を1件選ぶ（period_to > period_from）
+        $latest = collect($rows)->sortByDesc(function ($e) {
+            $end   = Arr::get($e, 'period_to');
+            $start = Arr::get($e, 'period_from');
+            return $end ?: $start ?: now()->toDateString();
+        })->first();
+
+        if (!$latest) return null;
+
+        $school  = trim((string) Arr::get($latest, 'school', ''));
+        $faculty = trim((string) Arr::get($latest, 'faculty', ''));
+        $dept    = trim((string) Arr::get($latest, 'department', ''));
+        $status  = trim((string) Arr::get($latest, 'status', '')); // 卒業/在学/中退など
+        $dateRaw = Arr::get($latest, 'period_to') ?: Arr::get($latest, 'period_from');
+        $when    = $dateRaw ? Carbon::parse($dateRaw)->isoFormat('YYYY/MM') : null;
+
+        $baseParts = array_filter([$school, $faculty, $dept], fn ($v) => $v !== '');
+        $base      = implode(' ', $baseParts);
+
+        if ($base === '') return null;
+
+        $tail = $status && $when ? "（{$status} {$when}）"
+             : ($status ? "（{$status}）"
+             : ($when ? "（{$when}）" : null));
+
+        return trim($base . ($tail ? " {$tail}" : ''));
     }
 }

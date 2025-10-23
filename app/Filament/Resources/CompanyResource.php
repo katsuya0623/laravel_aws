@@ -18,6 +18,11 @@ use Filament\Support\Exceptions\Halt;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\HtmlString;
 
+// ▼ 追加
+use Filament\Tables\Actions\Action;
+use Filament\Notifications\Notification;
+use App\Http\Controllers\Admin\CompanyInvitationController;
+
 class CompanyResource extends Resource
 {
     protected static ?string $model = Company::class;
@@ -30,13 +35,12 @@ class CompanyResource extends Resource
                 TextInput::make('name')
                     ->label('企業名')
                     ->required()
-                    // → ブラウザで自動カットさせないため maxLength は外す
-                    ->rule('max:30')               // 保存時に必ず弾く（サーバ側）
+                    ->rule('max:30')
                     ->validationMessages([
                         'max' => '企業名は30文字以内で入力してください。',
                     ])
                     ->validationAttribute('企業名')
-                    ->live()                        // 入力中に即エラー表示したい場合（任意）
+                    ->live()
                     ->helperText('30文字まで'),
 
                 TextInput::make('slug')
@@ -91,11 +95,11 @@ class CompanyResource extends Resource
             ])
             ->defaultSort('id', 'desc')
 
+            // ★ 「作成」＋「企業を招待」ボタンをここに設置
             ->headerActions([
                 CreateAction::make()
                     ->label('作成')
                     ->form(self::formSchema())
-                    // 保存直前でも中断（最終防衛）
                     ->mutateFormDataUsing(function (array $data): array {
                         if (isset($data['name']) && mb_strlen((string) $data['name']) > 30) {
                             throw Halt::make()->withValidationErrors([
@@ -106,6 +110,26 @@ class CompanyResource extends Resource
                     })
                     ->after(function (Company $record, array $data) {
                         self::upsertCompanyAccount($record, $data);
+                    }),
+
+                // ✅ 追加：企業を招待ボタン
+                Action::make('invite')
+                    ->label('企業を招待')
+                    ->icon('heroicon-o-paper-airplane')
+                    ->modalHeading('企業を招待')
+                    ->modalSubmitActionLabel('招待メールを送信')
+                    ->form([
+                        TextInput::make('email')->label('メールアドレス')->email()->required(),
+                        TextInput::make('company_name')->label('企業名')->required(),
+                    ])
+                    ->action(function (array $data): void {
+                        request()->merge($data);
+                        app(CompanyInvitationController::class)->store(request());
+
+                        Notification::make()
+                            ->title('招待メールを送信しました')
+                            ->success()
+                            ->send();
                     }),
             ])
 
@@ -133,9 +157,7 @@ class CompanyResource extends Resource
             ]);
     }
 
-    /**
-     * 会社アカウント（User）を作成 / 更新し、会社に紐付け
-     */
+    /** ユーザー紐付け処理（既存） */
     public static function upsertCompanyAccount(Company $company, array $data): void
     {
         $email    = trim((string)($data['account_email'] ?? request()->input('account_email', '')));

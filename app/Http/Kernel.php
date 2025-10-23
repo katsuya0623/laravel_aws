@@ -58,6 +58,9 @@ class Kernel extends HttpKernel
 
         // ★ お気に入り自動登録
         'autofavorite'     => \App\Http\Middleware\AutoFavorite::class,
+
+        // ★ 企業情報入力が完了していない場合の強制リダイレクト
+        'ensure.company.profile' => \App\Http\Middleware\EnsureCompanyProfileCompleted::class,
     ];
 
     /**
@@ -79,5 +82,8 @@ class Kernel extends HttpKernel
 
         // ★ お気に入り自動登録（ルート単位でも使えるように）
         'autofavorite'     => \App\Http\Middleware\AutoFavorite::class,
+
+        // ★ 企業情報入力完了チェック（強制リダイレクト）
+        'ensure.company.profile' => \App\Http\Middleware\EnsureCompanyProfileCompleted::class,
     ];
 }
