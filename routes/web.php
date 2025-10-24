@@ -5,6 +5,8 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Auth\RegisteredUserController;
+use App\Http\Middleware\EnsureCompanyProfileCompleted; // ★追加
+
 
 // Top / Front
 use App\Http\Controllers\Front\LandingController;
@@ -18,6 +20,7 @@ use App\Http\Controllers\Admin\PostController as AdminPostController;
 use App\Http\Controllers\Admin\ApplicationsController;
 use App\Http\Controllers\Admin\CompanyUserAssignController;
 use App\Http\Controllers\Admin\UserQuickAssignController;
+use App\Http\Controllers\Auth\CompanyInviteAcceptController;
 
 // ★ 招待＆オンボーディング用
 use App\Http\Controllers\Admin\CompanyInvitationController;
@@ -41,7 +44,6 @@ use App\Filament\Resources\PostResource;
 
 // エンドユーザーメール認証
 use Illuminate\Foundation\Auth\EmailVerificationRequest;
-
 
 use App\Http\Controllers\Invites\InviteAcceptController;
 
@@ -67,7 +69,7 @@ Route::permanentRedirect('/blog', '/');
 
 // ===== ★ Posts (public) =====
 Route::get('/posts', [FrontPostController::class, 'index'])->name('front.posts.index');
-Route::get('/posts/{slugOrId}', [FrontPostController::class, 'show'])->name('front.posts.show'); // ← 本命（front_public.php側の重複は削除済み）
+Route::get('/posts/{slugOrId}', [FrontPostController::class, 'show'])->name('front.posts.show'); // ← 本命
 
 // ===== Company profile (企業ユーザーのみ) =====
 Route::middleware(['auth:web', 'role:company'])->group(function () {
@@ -117,7 +119,7 @@ Route::prefix('recruit_jobs')->group(function () {
     Route::get('/', [FrontJobController::class, 'index'])->name('front.jobs.index');
 
     // 企業ユーザー専用（作成・更新系）→ プロフィール未完了なら強制オンボーディング
-    Route::middleware(['auth:web', 'role:company', 'ensure.company.profile'])->group(function () {
+    Route::middleware(['auth:web', 'role:company', EnsureCompanyProfileCompleted::class])->group(function () {
         Route::get('/create',       [FrontJobController::class, 'create'])->name('front.jobs.create');
         Route::post('/',            [FrontJobController::class, 'store'])->name('front.jobs.store');
 
@@ -158,9 +160,9 @@ Route::prefix('recruit_jobs')->group(function () {
 
     // お気に入り（エンドユーザー専用）
     Route::middleware(['auth:web', 'role:enduser'])->group(function () {
-        Route::post('/{job}/favorite',        [FavoriteController::class, 'store'])->whereNumber('job')->name('favorites.store');
-        Route::delete('/{job}/favorite',      [FavoriteController::class, 'destroy'])->whereNumber('job')->name('favorites.destroy');
-        Route::post('/{job}/favorite/toggle', [FavoriteController::class, 'toggle'])->whereNumber('job')->name('favorites.toggle');
+        Route::post('/{jobId}/favorite',        [FavoriteController::class, 'store'])->whereNumber('jobId')->name('favorites.store');
+        Route::delete('/{jobId}/favorite',      [FavoriteController::class, 'destroy'])->whereNumber('jobId')->name('favorites.destroy');
+        Route::post('/{jobId}/favorite/toggle', [FavoriteController::class, 'toggle'])->whereNumber('jobId')->name('favorites.toggle');
     });
 
     // ★ 動的ルートは最後。create を除外して衝突回避
@@ -179,7 +181,7 @@ Route::middleware(['auth:web', 'role:enduser'])->prefix('mypage')->name('mypage.
 });
 
 /* ===== USERS（企業側のみ） ===== */
-Route::middleware(['auth:web', 'role:company', 'ensure.company.profile'])
+Route::middleware(['auth:web', 'role:company', EnsureCompanyProfileCompleted::class])
     ->prefix('users')->name('users.')->group(function () {
         Route::get('/applicants', [ApplicantController::class, 'index'])->name('applicants.index');
         Route::get('/applicants/{application}', [ApplicantController::class, 'show'])
@@ -201,7 +203,8 @@ Route::get('/dashboard', function () {
     $role = \App\Support\RoleResolver::resolve(auth()->user());
     return view('dashboard', compact('role'));
 })
-    ->middleware(['auth:web', 'role:enduser,company', 'verified'])
+    // ★ 企業ユーザーが未完了ならここで捕捉してオンボーディングへ
+    ->middleware(['auth:web', 'role:enduser,company', 'verified', EnsureCompanyProfileCompleted::class])
     ->name('dashboard');
 
 /* ===== 迷子防止：企業/一般向けログイン導線（エイリアス） ===== */
@@ -231,14 +234,14 @@ if (! \Illuminate\Support\Facades\Route::has('admin.login')) {
 Route::prefix('admin')->middleware(['auth:admin'])->name('admin.')->group(function () {
 
     // ✅ 招待：管理画面から招待作成/再送/取消
-    Route::post('/companies/invite', [CompanyInvitationController::class,'store'])->name('companies.invite.store');
-    Route::post('/companies/invite/{invitation}/resend', [CompanyInvitationController::class,'resend'])->name('companies.invite.resend');
-    Route::post('/companies/invite/{invitation}/cancel', [CompanyInvitationController::class,'cancel'])->name('companies.invite.cancel');
+    Route::post('/companies/invite', [CompanyInvitationController::class, 'store'])->name('companies.invite.store');
+    Route::post('/companies/invite/{invitation}/resend', [CompanyInvitationController::class, 'resend'])->name('companies.invite.resend');
+    Route::post('/companies/invite/{invitation}/cancel', [CompanyInvitationController::class, 'cancel'])->name('companies.invite.cancel');
 
     // 管理画面からパスワードリセットメール送信
-    Route::post('/users/{user}/send-reset', function(\App\Models\User $user){
-        \Illuminate\Support\Facades\Password::sendResetLink(['email' => $user->email]);
-        return back()->with('status','パスワードリセットメールを送信しました。');
+    Route::post('/users/{user}/send-reset', function (\App\Models\User $user) {
+        \Illuminate\Support\Facades\Password::broker('users')->sendResetLink(['email' => $user->email]);
+        return back()->with('status', 'パスワードリセットメールを送信しました。');
     })->name('users.send_reset');
 
     // ✅ Bladeの /admin/posts ルートは削除（Filament に任せる）
@@ -317,9 +320,9 @@ Route::prefix('admin')->middleware(['auth:admin'])->name('admin.')->group(functi
 });
 
 /* ===== オンボーディング（強制導線） ===== */
-Route::middleware(['web','auth:web'])->group(function () {
-    Route::get('/onboarding/company', [CompanyProfileController::class,'edit'])->name('onboarding.company.edit');
-    Route::post('/onboarding/company', [CompanyProfileController::class,'update'])->name('onboarding.company.update');
+Route::middleware(['web', 'auth:web'])->group(function () {
+    Route::get('/onboarding/company', [CompanyProfileController::class, 'edit'])->name('onboarding.company.edit');
+    Route::post('/onboarding/company', [CompanyProfileController::class, 'update'])->name('onboarding.company.update');
 });
 
 /* ===== Filament 暫定エイリアス（保険） ===== */
@@ -397,18 +400,23 @@ Route::middleware(['auth:admin'])->get('/__role-test', fn() => 'ok');
 Route::middleware('auth:web')->put('/password', [PasswordController::class, 'update'])
     ->name('password.update');
 
-
+// ===== 招待受諾フロー =====
 Route::prefix('invites')->name('invites.')->group(function () {
-    // 受諾フォーム表示（署名付きURL & 期限チェック）
+    // 受諾フォーム表示（※署名付きURLは使っていないので 'signed' を外す）
     Route::get('/accept/{token}', [InviteAcceptController::class, 'show'])
-        ->middleware(['signed','throttle:20,1'])
+        ->middleware(['throttle:20,1'])
         ->name('accept');
 
-    // 受諾の完了（パスワード設定）
-    Route::post('/accept/{token}', [InviteAcceptController::class, 'complete'])
+    // 受諾の完了（パスワード設定 & 紐付け）
+    Route::post('/accept/{token}', [InviteAcceptController::class, 'accept'])
         ->middleware(['throttle:20,1'])
-        ->name('complete');
+        ->name('accept.post');
 
-    // ★ 期限切れ表示ページ
+    // 期限切れ表示
     Route::view('/expired', 'invites.expired')->name('expired');
 });
+
+
+Route::get('/invite/{token}', [CompanyInviteAcceptController::class, 'accept'])
+    ->name('company.invite.accept')   // 好きな名前でOK
+    ->middleware('web');              // 認証前でも踏めるように

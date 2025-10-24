@@ -22,33 +22,38 @@ class FrontJobController extends Controller
         $q      = trim($request->input('q', ''));
         $status = $request->input('status', '');
 
-        $table = (new Job)->getTable();
+        $table = (new Job)->getTable(); // 例: recruit_jobs
 
-        $jobs = Job::query()
-            ->with('company')
-            ->when($q !== '', function ($qb) use ($q, $table) {
-                foreach (preg_split('/\s+/u', $q, -1, PREG_SPLIT_NO_EMPTY) as $kw) {
-                    $qb->where(function ($qq) use ($kw, $table) {
-                        $like = "%{$kw}%";
-                        $qq->where('title', 'like', $like)
-                           ->orWhere('description', 'like', $like)
-                           ->orWhere('location', 'like', $like)
-                           ->orWhere('tags', 'like', $like);
+        // ★ 企業プロフィールが完了済みの企業のみ表示（スキーマに応じて安全にJOIN）
+        $jobs = $this->joinCompletedCompanyProfile(Job::query()->with('company'), $table);
 
-                        if (Schema::hasColumn($table, 'company_name')) {
-                            $qq->orWhere('company_name', 'like', $like);
-                        }
-                    });
-                }
-            })
-            ->when(in_array($status, ['draft', 'published'], true), function ($qb) use ($status, $table) {
-                if (Schema::hasColumn($table, 'status')) {
-                    $qb->where('status', $status);
-                } elseif (Schema::hasColumn($table, 'is_published')) {
-                    $qb->where('is_published', $status === 'published' ? 1 : 0);
-                }
-            })
-            ->latest('id')
+        // キーワード検索
+        if ($q !== '') {
+            foreach (preg_split('/\s+/u', $q, -1, PREG_SPLIT_NO_EMPTY) as $kw) {
+                $jobs->where(function ($qq) use ($kw, $table) {
+                    $like = "%{$kw}%";
+                    $qq->where('title', 'like', $like)
+                       ->orWhere('description', 'like', $like)
+                       ->orWhere('location', 'like', $like)
+                       ->orWhere('tags', 'like', $like);
+
+                    if (Schema::hasColumn($table, 'company_name')) {
+                        $qq->orWhere('company_name', 'like', $like);
+                    }
+                });
+            }
+        }
+
+        // ステータス絞り込み
+        $jobs->when(in_array($status, ['draft', 'published'], true), function ($qb) use ($status, $table) {
+            if (Schema::hasColumn($table, 'status')) {
+                $qb->where('status', $status);
+            } elseif (Schema::hasColumn($table, 'is_published')) {
+                $qb->where('is_published', $status === 'published' ? 1 : 0);
+            }
+        });
+
+        $jobs = $jobs->latest("$table.id")
             ->paginate(20)
             ->withQueryString();
 
@@ -58,13 +63,18 @@ class FrontJobController extends Controller
     /** 求人詳細（slug or id） */
     public function show(string $slugOrId)
     {
-        $job = Job::query()
-            ->with('company')
+        $table = (new Job)->getTable();
+
+        // ★ 企業プロフィールが完了済みの企業のみ表示（スキーマに応じて安全にJOIN）
+        $jobQuery = $this->joinCompletedCompanyProfile(Job::query()->with('company'), $table);
+
+        $job = $jobQuery
             ->when(
                 is_numeric($slugOrId),
-                fn($q) => $q->where('id', $slugOrId),
-                fn($q) => $q->where('slug', $slugOrId)
-            )->firstOrFail();
+                fn($q) => $q->where("$table.id", $slugOrId),
+                fn($q) => $q->where("$table.slug", $slugOrId)
+            )
+            ->firstOrFail();
 
         return view()->exists('front.jobs.show')
             ? view('front.jobs.show', compact('job'))
@@ -75,7 +85,9 @@ class FrontJobController extends Controller
     public function create()
     {
         $user = Auth::user();
-        if (!$user || RoleResolver::resolve($user) !== 'company') abort(403);
+        if (!$user || RoleResolver::resolve($user) !== 'company') {
+            abort(403);
+        }
 
         [$ids, $companies] = $this->companiesFor($user->id);
 
@@ -89,7 +101,9 @@ class FrontJobController extends Controller
     public function store(Request $request)
     {
         $user = Auth::user();
-        if (!$user || RoleResolver::resolve($user) !== 'company') abort(403);
+        if (!$user || RoleResolver::resolve($user) !== 'company') {
+            abort(403);
+        }
 
         [$allowedIds] = $this->companiesFor($user->id);
         if (empty($allowedIds)) {
@@ -115,7 +129,9 @@ class FrontJobController extends Controller
         $slugBase = Str::slug($data['title']) ?: Str::lower(Str::random(8));
         $slug = $slugBase;
         $i = 1;
-        while (Job::where('slug', $slug)->exists()) $slug = $slugBase . '-' . (++$i);
+        while (Job::where('slug', $slug)->exists()) {
+            $slug = $slugBase . '-' . (++$i);
+        }
 
         $table = (new Job)->getTable();
 
@@ -123,7 +139,7 @@ class FrontJobController extends Controller
             'title'           => $data['title'],
             'description'     => $data['body'],
             'slug'            => $slug,
-            'user_id'         => $user->id,
+            'user_id'         => $user->id, // カラムが無ければ後段で弾かれるので安全
             'company_id'      => (int) $data['company_id'],
             'company_name'    => $data['company_name']    ?? null,
             'location'        => $data['location']        ?? null,
@@ -140,12 +156,18 @@ class FrontJobController extends Controller
         if (Schema::hasColumn($table, 'excerpt') && isset($data['summary'])) {
             $full['excerpt'] = $data['summary'];
         }
-        if (Schema::hasColumn($table, 'status')) $full['status'] = $data['status'];
-        if (Schema::hasColumn($table, 'is_published')) $full['is_published'] = ($data['status'] ?? 'draft') === 'published' ? 1 : 0;
+        if (Schema::hasColumn($table, 'status')) {
+            $full['status'] = $data['status'];
+        }
+        if (Schema::hasColumn($table, 'is_published')) {
+            $full['is_published'] = ($data['status'] ?? 'draft') === 'published' ? 1 : 0;
+        }
 
         if ($request->hasFile('image')) {
             $path = $request->file('image')->store('recruit_jobs', 'public');
-            if (Schema::hasColumn($table, 'image_path')) $full['image_path'] = $path;
+            if (Schema::hasColumn($table, 'image_path')) {
+                $full['image_path'] = $path;
+            }
         }
 
         $cols    = Schema::getColumnListing($table);
@@ -160,7 +182,9 @@ class FrontJobController extends Controller
     public function update(Request $request, Job $job)
     {
         $user = Auth::user();
-        if (!$user || RoleResolver::resolve($user) !== 'company') abort(403);
+        if (!$user || RoleResolver::resolve($user) !== 'company') {
+            abort(403);
+        }
 
         [$allowedIds] = $this->companiesFor($user->id);
         if (empty($allowedIds)) {
@@ -203,17 +227,27 @@ class FrontJobController extends Controller
         if (Schema::hasColumn($table, 'excerpt') && isset($data['summary'])) {
             $full['excerpt'] = $data['summary'];
         }
-        if (Schema::hasColumn($table, 'status') && isset($data['status'])) $full['status'] = $data['status'];
-        if (Schema::hasColumn($table, 'is_published') && isset($data['status'])) $full['is_published'] = $data['status'] === 'published' ? 1 : 0;
+        if (Schema::hasColumn($table, 'status') && isset($data['status'])) {
+            $full['status'] = $data['status'];
+        }
+        if (Schema::hasColumn($table, 'is_published') && isset($data['status'])) {
+            $full['is_published'] = $data['status'] === 'published' ? 1 : 0;
+        }
 
         if ($request->boolean('remove_image') && $job->image_path) {
             Storage::disk('public')->delete($job->image_path);
-            if (Schema::hasColumn($table, 'image_path')) $full['image_path'] = null;
+            if (Schema::hasColumn($table, 'image_path')) {
+                $full['image_path'] = null;
+            }
         }
         if ($request->hasFile('image')) {
-            if ($job->image_path) Storage::disk('public')->delete($job->image_path);
+            if ($job->image_path) {
+                Storage::disk('public')->delete($job->image_path);
+            }
             $path = $request->file('image')->store('recruit_jobs', 'public');
-            if (Schema::hasColumn($table, 'image_path')) $full['image_path'] = $path;
+            if (Schema::hasColumn($table, 'image_path')) {
+                $full['image_path'] = $path;
+            }
         }
 
         $cols    = Schema::getColumnListing($table);
@@ -228,9 +262,13 @@ class FrontJobController extends Controller
     public function destroy(Job $job)
     {
         $user = Auth::user();
-        if (!$user || RoleResolver::resolve($user) !== 'company') abort(403);
+        if (!$user || RoleResolver::resolve($user) !== 'company') {
+            abort(403);
+        }
 
-        if ($job->image_path) Storage::disk('public')->delete($job->image_path);
+        if ($job->image_path) {
+            Storage::disk('public')->delete($job->image_path);
+        }
         $job->delete();
 
         return redirect()->route('front.jobs.index')->with('success', '求人を削除しました。');
@@ -243,7 +281,10 @@ class FrontJobController extends Controller
 
         if ($body === null) {
             foreach (['description', 'content', 'text'] as $alt) {
-                if ($request->filled($alt)) { $body = $request->input($alt); break; }
+                if ($request->filled($alt)) {
+                    $body = $request->input($alt);
+                    break;
+                }
             }
         }
 
@@ -329,7 +370,6 @@ class FrontJobController extends Controller
 
         /* --- A) company_user( company_profile_id ) 経由 --- */
         if (Schema::hasTable('company_user') && Schema::hasColumn('company_user', 'company_profile_id')) {
-
             $cpTable = 'company_profiles';
 
             // company_profiles 側の「会社名カラム」を特定（company_name / name のどちらか）
@@ -353,7 +393,10 @@ class FrontJobController extends Controller
             }
 
             if ($names->isNotEmpty()) {
-                $idsFromNames = Company::whereIn('name', $names)->pluck('id')->map(fn ($v) => (int) $v)->all();
+                $idsFromNames = Company::whereIn('name', $names)
+                    ->pluck('id')
+                    ->map(fn ($v) => (int) $v)
+                    ->all();
                 $ids = array_merge($ids, $idsFromNames);
             }
         }
@@ -361,7 +404,9 @@ class FrontJobController extends Controller
         /* --- B) users.company_id --- */
         if (Schema::hasColumn('users', 'company_id')) {
             $cid = DB::table('users')->where('id', $userId)->value('company_id');
-            if ($cid) $ids[] = (int) $cid;
+            if ($cid) {
+                $ids[] = (int) $cid;
+            }
         }
 
         /* --- C) companies.user_id / owner_user_id --- */
@@ -369,21 +414,70 @@ class FrontJobController extends Controller
             if (Schema::hasColumn($companyTable, $ownerCol)) {
                 $own = DB::table($companyTable)
                     ->where($ownerCol, $userId)
-                    ->pluck('id')->map(fn ($v) => (int) $v)->all();
-                $ids = array_merge($ids, $own);
+                    ->pluck('id')
+                    ->map(fn ($v) => (int) $v)
+                    ->all();
+                if (!empty($own)) {
+                    $ids = array_merge($ids, $own);
+                }
             }
         }
 
-        /* 仕上げ：重複排除 & 実在確認 */
-        $ids = array_values(array_unique(array_filter($ids)));
-        if (!empty($ids)) {
-            $ids = Company::whereIn('id', $ids)->pluck('id')->map(fn ($v) => (int) $v)->all();
-        }
+        // 重複排除
+        $ids = array_values(array_unique($ids));
 
-        $companies = !empty($ids)
-            ? Company::whereIn('id', $ids)->orderBy('name')->get(['id','name'])
-            : collect();
+        // Company コレクション
+        $companies = empty($ids)
+            ? collect()
+            : Company::whereIn('id', $ids)->get();
 
         return [$ids, $companies];
+    }
+
+    /* =======================================================
+     * company_profiles の is_completed を満たす求人だけに絞るための結合
+     * スキーマに応じて安全に JOIN する
+     * ======================================================= */
+    private function joinCompletedCompanyProfile($qb, string $jobTable)
+    {
+        if (! Schema::hasTable('company_profiles')) {
+            return $qb->select("$jobTable.*");
+        }
+
+        $companyTable = (new Company)->getTable();
+
+        // jobs/recruit_jobs に user_id がある場合
+        if (Schema::hasColumn($jobTable, 'user_id')) {
+            return $qb->join('company_profiles as cp', "cp.user_id", '=', "$jobTable.user_id")
+                      ->where('cp.is_completed', true)
+                      ->select("$jobTable.*");
+        }
+
+        // jobs/recruit_jobs に company_id がある場合は companies 経由でオーナー user_id を辿る
+        if (Schema::hasColumn($jobTable, 'company_id') && Schema::hasTable($companyTable)) {
+            $ownerCol = null;
+            if (Schema::hasColumn($companyTable, 'user_id')) {
+                $ownerCol = 'user_id';
+            } elseif (Schema::hasColumn($companyTable, 'owner_user_id')) {
+                $ownerCol = 'owner_user_id';
+            }
+
+            if ($ownerCol) {
+                return $qb->join("$companyTable as c", "c.id", '=', "$jobTable.company_id")
+                          ->join('company_profiles as cp', "cp.user_id", '=', "c.$ownerCol")
+                          ->where('cp.is_completed', true)
+                          ->select("$jobTable.*");
+            }
+
+            // 最終手段: company_profiles に company_id があればそれで突合
+            if (Schema::hasColumn('company_profiles', 'company_id')) {
+                return $qb->join('company_profiles as cp', 'cp.company_id', '=', "$jobTable.company_id")
+                          ->where('cp.is_completed', true)
+                          ->select("$jobTable.*");
+            }
+        }
+
+        // どうしても突合できない場合はフィルタを諦めて落ちないようにする
+        return $qb->select("$jobTable.*");
     }
 }

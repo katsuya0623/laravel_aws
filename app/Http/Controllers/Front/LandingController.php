@@ -11,6 +11,9 @@ use App\Models\RecruitJob;
 
 class LandingController extends Controller
 {
+    /** リクエスト内キャッシュ（company_id -> bool） */
+    private array $completedCache = []; // ★追記
+
     public function index()
     {
         /* ===== 記事 ===== */
@@ -30,6 +33,26 @@ class LandingController extends Controller
 
         /* ===== 企業 ===== */
         $cq = Company::query();
+
+        // ★追記: 完了プロフィール企業のみ
+        if (method_exists(Company::class, 'scopeWithCompletedProfile')) {
+            $cq->withCompletedProfile();
+        } elseif (
+            Schema::hasTable('company_profiles') &&
+            Schema::hasColumn('company_profiles', 'is_completed') &&
+            Schema::hasColumn('companies', 'name')
+        ) {
+            $cpNameCol = Schema::hasColumn('company_profiles', 'company_name')
+                ? 'company_name'
+                : (Schema::hasColumn('company_profiles', 'name') ? 'name' : null);
+            if ($cpNameCol) {
+                $cq->join('company_profiles as cp', "cp.$cpNameCol", '=', 'companies.name')
+                   ->where('cp.is_completed', 1)
+                   ->select('companies.*');
+            }
+        }
+        // ★追記ここまで
+
         if (Schema::hasColumn('companies', 'is_public'))    $cq->where('is_public', 1);
         if (Schema::hasColumn('companies', 'is_published')) $cq->where('is_published', 1);
         if (Schema::hasColumn('companies', 'published'))    $cq->where('published', 1);
@@ -80,6 +103,10 @@ class LandingController extends Controller
                 'id','slug','title','thumbnail_url','thumbnail_path','thumbnail',
                 'published_at','expires_at','updated_at','created_at','company_id'
             ]);
+
+            // ★追記: 完了企業の求人だけ残す（company_id 経由）
+            $modelJobs = $modelJobs->filter(fn($x) => $this->companyCompletedByCompanyId(data_get($x,'company_id')))
+                                   ->values();
         }
 
         // 2) DB直叩き（recruit_jobs / jobs）
@@ -100,6 +127,10 @@ class LandingController extends Controller
                 ->orderByDesc('id')
                 ->limit($limit * 2)
                 ->get();
+
+            // ★追記: 完了企業の求人だけ残す
+            $r = $r->filter(fn($x) => $this->companyCompletedByCompanyId(data_get($x,'company_id')))->values();
+
             $dbJobs = $dbJobs->concat($r);
         }
 
@@ -118,10 +149,14 @@ class LandingController extends Controller
                 ->orderByDesc('id')
                 ->limit($limit * 2)
                 ->get();
+
+            // ★追記: 完了企業の求人だけ残す
+            $j = $j->filter(fn($x) => $this->companyCompletedByCompanyId(data_get($x,'company_id')))->values();
+
             $dbJobs = $dbJobs->concat($j);
         }
 
-        // 3) マージ → 重複除去 → 新しい順 → 上位N件
+        // 3) マージ → 重複除去 → 新しい順 → 完了企業のみを維持したまま上位N件
         $jobsTop = collect()
             ->concat($modelJobs ?? collect())
             ->concat($dbJobs ?? collect())
@@ -137,5 +172,42 @@ class LandingController extends Controller
             ->values();
 
         return view('front.home', compact('posts', 'companiesTop', 'jobsTop'));
+    }
+
+    /* ----------------------------------------------------------
+       ★追記: company_id から完了プロフィールかどうかを判定
+       1) companies.id => companies.name を取得
+       2) company_profiles.(company_name|name) と一致 かつ is_completed=1 を確認
+       ---------------------------------------------------------- */
+    private function companyCompletedByCompanyId($companyId): bool
+    {
+        $companyId = (int)($companyId ?? 0);
+        if ($companyId <= 0) return false;
+
+        if (array_key_exists($companyId, $this->completedCache)) {
+            return $this->completedCache[$companyId];
+        }
+
+        if (!Schema::hasTable('companies') || !Schema::hasTable('company_profiles')) {
+            return $this->completedCache[$companyId] = false;
+        }
+
+        $name = DB::table('companies')->where('id', $companyId)->value('name');
+        if (!$name) return $this->completedCache[$companyId] = false;
+
+        $cpNameCol = Schema::hasColumn('company_profiles','company_name')
+            ? 'company_name'
+            : (Schema::hasColumn('company_profiles','name') ? 'name' : null);
+
+        if (!$cpNameCol || !Schema::hasColumn('company_profiles','is_completed')) {
+            return $this->completedCache[$companyId] = false;
+        }
+
+        $exists = DB::table('company_profiles')
+            ->where($cpNameCol, $name)
+            ->where('is_completed', 1)
+            ->exists();
+
+        return $this->completedCache[$companyId] = (bool)$exists;
     }
 }

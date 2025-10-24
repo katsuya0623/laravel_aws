@@ -8,7 +8,7 @@
     招待先メール：<strong>{{ $email }}</strong>
   </p>
 
-  <form method="POST" action="{{ route('invites.complete', ['token' => $token]) }}">
+<form method="POST" action="{{ route('invites.accept.post', ['token' => $token]) }}">
     @csrf
     <div class="mb-4">
       <label class="block text-sm font-medium mb-1">パスワード</label>

@@ -89,19 +89,40 @@
     return null;
   };
 
-  // ===== Companies フォールバック =====
+  // ===== Companies フォールバック（未完了企業を除外する版） =====
   if ($companies->isEmpty()) {
     try {
       if (class_exists(\App\Models\Company::class) && \Schema::hasTable('companies')) {
-        $q = \App\Models\Company::query();
-        if (\Schema::hasColumn('companies','is_published')) $q->where('is_published', 1);
-        if (\Schema::hasColumn('companies','published'))    $q->where('published', 1);
-        if (\Schema::hasColumn('companies','status'))       $q->where('status', 'published');
-        if (\Schema::hasColumn('companies','deleted_at'))   $q->whereNull('deleted_at');
-        if (\Schema::hasColumn('companies','name'))         $q->where('name','not like','%デモ%')->where('name','not like','%demo%');
-        $companies = $q->orderByDesc('id')->limit(6)->get();
+        $cpTable  = 'company_profiles';
+        $cpNameCol = \Schema::hasColumn($cpTable, 'company_name')
+            ? 'company_name'
+            : (\Schema::hasColumn($cpTable, 'name') ? 'name' : null);
+
+        $q = \DB::table('companies');
+
+        // 完了済み企業のみ
+        if ($cpNameCol) {
+          $q->join("{$cpTable} as cp", "cp.{$cpNameCol}", '=', 'companies.name')
+            ->where('cp.is_completed', 1)
+            ->select('companies.*');
+        }
+
+        // 公開条件・デモ除外
+        if (\Schema::hasColumn('companies','is_published')) $q->where('companies.is_published', 1);
+        if (\Schema::hasColumn('companies','published'))    $q->where('companies.published', 1);
+        if (\Schema::hasColumn('companies','status'))       $q->where('companies.status', 'published');
+        if (\Schema::hasColumn('companies','deleted_at'))   $q->whereNull('companies.deleted_at');
+        if (\Schema::hasColumn('companies','name'))         $q->where('companies.name','not like','%デモ%')->where('companies.name','not like','%demo%');
+
+        $q->orderByDesc('companies.updated_at')
+          ->orderByDesc('companies.id')
+          ->limit(6);
+
+        $companies = collect($q->get());
       }
-    } catch (\Throwable $e) { $companies = collect(); }
+    } catch (\Throwable $e) {
+      $companies = collect();
+    }
   }
 
   // ===== Jobs フォールバック（Eloquentで取得してアクセサを使う） =====
@@ -182,7 +203,7 @@
       <a href="{{ $jobIndexUrl }}" style="font-size:12px;color:#6366f1;text-decoration:none;">求人一覧へ</a>
     </div>
 
-    <ul style="list-style:none;margin:0;padding:0 0 16px;">
+    <ul style="list-style:none;margin:0;padding:0 16px 16px;">
       @forelse($jobs as $j)
         @php
           // 詳細URL

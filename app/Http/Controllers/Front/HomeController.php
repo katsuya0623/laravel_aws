@@ -72,6 +72,22 @@ class HomeController extends Controller
                 });
             }
 
+            // ★追記: company_profiles と突合して「完了企業のみ」
+            if ($schema->hasTable('company_profiles')
+                && $schema->hasColumn('company_profiles','is_completed')
+                && $schema->hasColumn('companies','name')) {
+
+                $cpNameCol = $schema->hasColumn('company_profiles','company_name')
+                    ? 'company_name'
+                    : ($schema->hasColumn('company_profiles','name') ? 'name' : null);
+
+                if ($cpNameCol) {
+                    $q->join('company_profiles as cp', "cp.$cpNameCol", '=', 'companies.name')
+                      ->where('cp.is_completed', 1);
+                }
+            }
+            // ★追記ここまで
+
             // 使いそうな列だけ選択（存在チェック）
             $cols = [];
             foreach ([

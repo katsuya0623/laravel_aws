@@ -4,170 +4,235 @@ namespace App\Http\Controllers\Invites;
 
 use App\Http\Controllers\Controller;
 use App\Models\Company;
-use App\Models\CompanyInvitation;
 use App\Models\User;
-// ★ 追加
-use App\Models\CompanyProfile;
-
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Auth\Events\Verified;
-use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 
 class InviteAcceptController extends Controller
 {
-    /** 招待受諾フォーム表示 */
-    public function show(Request $request, string $token)
+    /**
+     * 受諾フォーム表示（GET /invites/accept/{token}）
+     * ルート名: invites.accept
+     */
+    public function show(string $token)
     {
-        $inv = CompanyInvitation::where('token', $token)->first();
+        if (! Schema::hasTable('company_invitations')) {
+            abort(404);
+        }
+
+        $inv = $this->findInvitationByToken($token);
         if (! $inv) {
             return redirect()->route('invites.expired');
         }
 
-        if ($inv->status !== 'pending' || now()->greaterThan($inv->expires_at)) {
-            return redirect()->route('invites.expired');
+        if (property_exists($inv, 'expires_at') && ! empty($inv->expires_at)) {
+            if (now()->greaterThan($inv->expires_at)) {
+                return redirect()->route('invites.expired');
+            }
+        }
+
+        $email = $this->resolveInvitationEmail($inv);
+
+        $companyName = null;
+        if (property_exists($inv, 'company_id') && $inv->company_id) {
+            if ($company = Company::find($inv->company_id)) {
+                $companyName = $company->name;
+            }
+        }
+        if (! $companyName && property_exists($inv, 'company_name') && ! empty($inv->company_name)) {
+            $companyName = $inv->company_name;
         }
 
         return view('invites.accept', [
             'token'        => $token,
-            'email'        => $inv->email,
-            'company_name' => $inv->company_name,
+            'email'        => $email,
+            'company_name' => $companyName,
         ]);
     }
 
-    /** 受諾完了（パスワード設定） */
-    public function complete(Request $request, string $token)
+    /**
+     * 受諾処理（POST /invites/accept/{token}）
+     * ルート名: invites.accept.post
+     * - パスワード設定
+     * - ユーザー作成/取得
+     * - 会社へ自動紐付け
+     * - 招待ステータス更新
+     * - ★ 企業ユーザーはメール検証済みにする（email_verified_at=now）
+     */
+    public function accept(Request $request, string $token): RedirectResponse
     {
-        $inv = CompanyInvitation::where('token', $token)->first();
-        if (! $inv || $inv->status !== 'pending' || now()->greaterThan($inv->expires_at)) {
+        $data = $request->validate([
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+        ], [
+            'password.required'  => 'パスワードを入力してください。',
+            'password.min'       => 'パスワードは8文字以上で入力してください。',
+            'password.confirmed' => '確認用パスワードと一致しません。',
+        ]);
+
+        if (! Schema::hasTable('company_invitations')) {
+            return back()->withErrors(['invite' => '招待情報が見つかりませんでした。']);
+        }
+
+        $inv = $this->findInvitationByToken($token);
+        if (! $inv) {
             return redirect()->route('invites.expired');
         }
 
-        $data = $request->validate([
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
-        ]);
-
-        // ユーザー作成 or 取得
-        $user = User::firstOrNew(['email' => $inv->email]);
-        if (! $user->exists) {
-            $user->name = $inv->company_name; // 仮の表示名
+        if (property_exists($inv, 'expires_at') && ! empty($inv->expires_at)) {
+            if (now()->greaterThan($inv->expires_at)) {
+                return redirect()->route('invites.expired');
+            }
         }
-        $user->password  = Hash::make($data['password']);
-        $user->role      = 'company';
-        $user->is_active = true;
+
+        if (! property_exists($inv, 'company_id') || empty($inv->company_id)) {
+            return back()->withErrors(['invite' => '招待に会社情報がありません。']);
+        }
+        $company = Company::find($inv->company_id);
+        if (! $company) {
+            return back()->withErrors(['invite' => '対象の会社が存在しません。']);
+        }
+
+        $email = $this->resolveInvitationEmail($inv);
+        if (! $email && ! empty($company->email)) {
+            $email = trim((string) $company->email);
+        }
+        if (! $email) {
+            return back()->withErrors(['email' => '送信先メールアドレスを特定できません。']);
+        }
+
+        // ユーザー作成/更新
+        $user = User::firstOrNew(['email' => $email]);
+        if (! $user->exists) {
+            $user->name = $company->name ?? 'Company User';
+        }
+        $user->password = Hash::make($data['password']);
+
+        // ★ ここで企業ユーザーはメール検証済みにする
+        if (Schema::hasColumn('users', 'email_verified_at') && empty($user->email_verified_at)) {
+            $user->email_verified_at = now();
+        }
+
+        if (method_exists($user, 'assignRole')) {
+            try { $user->assignRole('company'); } catch (\Throwable $e) {}
+        }
+        if (property_exists($user, 'role') && empty($user->role)) {
+            $user->role = 'company';
+        }
+        if (property_exists($user, 'is_active')) {
+            $user->is_active = true;
+        }
         $user->save();
 
-        // ====== 会社に紐付け（環境差異に強い実装） ======
-        $company = Company::find($inv->company_id);
-        if ($company) {
-            $attached = false;
+        // 会社へ自動紐付け
+        $this->attachUserToCompany($company, $user);
 
-            // 1) リレーション優先
-            if (method_exists($company, 'users')) {
-                try {
-                    if (! $company->users()->where('users.id', $user->id)->exists()) {
-                        $company->users()->syncWithoutDetaching([$user->id]);
-                    }
-                    $attached = true;
-                } catch (\Throwable $e) {
-                    // フォールバックへ
-                }
+        // 招待を accepted に
+        $update = ['status' => 'accepted'];
+        if (Schema::hasColumn('company_invitations', 'accepted_at')) {
+            $update['accepted_at'] = now();
+        }
+        DB::table('company_invitations')->where('id', $inv->id)->update($update);
+
+        Log::info('Invite accepted', [
+            'company_id' => $company->id,
+            'user_id'    => $user->id,
+            'email'      => $user->email,
+        ]);
+
+        // 任意：自動ログイン
+        // auth()->login($user);
+
+        return redirect()->route('dashboard')->with('status', '招待を受諾し、企業アカウントに紐づけました。');
+    }
+
+    /* ======================= Helpers ======================= */
+
+    private function findInvitationByToken(string $token): ?object
+    {
+        $candidates = array_values(array_filter([
+            Schema::hasColumn('company_invitations', 'token') ? 'token' : null,
+            Schema::hasColumn('company_invitations', 'uuid')  ? 'uuid'  : null,
+            Schema::hasColumn('company_invitations', 'code')  ? 'code'  : null,
+        ]));
+
+        foreach ($candidates as $col) {
+            $inv = DB::table('company_invitations')->where($col, $token)->first();
+            if ($inv) return $inv;
+        }
+        return null;
+    }
+
+    private function resolveInvitationEmail(object $inv): ?string
+    {
+        foreach (['email', 'invited_email', 'invitee_email', 'recipient_email'] as $c) {
+            if (property_exists($inv, $c) && ! empty($inv->{$c})) {
+                return trim((string) $inv->{$c});
             }
+        }
+        return null;
+    }
 
-            // 2) users.company_id
-            if (! $attached && Schema::hasColumn($user->getTable(), 'company_id')) {
-                if (! isset($user->company_id) || (int)$user->company_id !== (int)$company->id) {
-                    $user->forceFill(['company_id' => $company->id])->save();
-                }
-                $attached = true;
+    private function attachUserToCompany(Company $company, User $user): void
+    {
+        // 標準 pivot
+        if (Schema::hasTable('company_user')
+            && Schema::hasColumn('company_user', 'company_id')
+            && Schema::hasColumn('company_user', 'user_id')) {
+
+            $exists = DB::table('company_user')
+                ->where('company_id', $company->id)
+                ->where('user_id', $user->id)
+                ->exists();
+
+            if (! $exists) {
+                DB::table('company_user')->insert([
+                    'company_id' => $company->id,
+                    'user_id'    => $user->id,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
             }
+            return;
+        }
 
-            // 3) ピボット候補
-            if (! $attached) {
-                $pivotCandidates = ['company_user', 'company_users', 'companies_users'];
-                $companyCols     = ['company_id', 'companyId', 'companyID'];
-                $userCols        = ['user_id', 'userId', 'userID'];
-                foreach ($pivotCandidates as $tbl) {
-                    if (! Schema::hasTable($tbl)) continue;
-                    $cCol = collect($companyCols)->first(fn ($c) => Schema::hasColumn($tbl, $c));
-                    $uCol = collect($userCols)->first(fn ($c) => Schema::hasColumn($tbl, $c));
-                    if ($cCol && $uCol) {
-                        $exists = DB::table($tbl)->where($cCol, $company->id)->where($uCol, $user->id)->exists();
-                        if (! $exists) {
-                            DB::table($tbl)->insert([$cCol => $company->id, $uCol => $user->id]);
-                        }
-                        $attached = true;
-                        break;
-                    }
-                }
-            }
+        // 旧構成: company_profile 経由
+        if (Schema::hasTable('company_user')
+            && Schema::hasColumn('company_user', 'company_profile_id')
+            && Schema::hasTable('company_profiles')
+            && Schema::hasColumn('company_profiles', 'company_id')) {
 
-            // 4) companies.user_id
-            if (! $attached && Schema::hasColumn($company->getTable(), 'user_id')) {
-                if ((int)($company->user_id ?? 0) !== (int)$user->id) {
-                    $company->forceFill(['user_id' => $user->id])->save();
-                }
-            }
+            $profileId = DB::table('company_profiles')
+                ->where('company_id', $company->id)
+                ->value('id');
 
-            // 会社名自動補完（Company 側にも反映しておく）
-            $nameCols = collect(['name', 'company_name'])
-                ->filter(fn ($c) => Schema::hasColumn($company->getTable(), $c));
+            if ($profileId) {
+                $exists = DB::table('company_user')
+                    ->where('company_profile_id', $profileId)
+                    ->where('user_id', $user->id)
+                    ->exists();
 
-            $hasAny = $nameCols->contains(fn ($c) => filled($company->{$c} ?? null));
-            if (! $hasAny && filled($inv->company_name)) {
-                $fill = [];
-                foreach ($nameCols as $c) {
-                    $fill[$c] = $inv->company_name;
+                if (! $exists) {
+                    DB::table('company_user')->insert([
+                        'company_profile_id' => $profileId,
+                        'user_id'            => $user->id,
+                        'created_at'         => now(),
+                        'updated_at'         => now(),
+                    ]);
                 }
-                if ($fill) {
-                    $company->forceFill($fill)->save();
-                }
+                return;
             }
         }
 
-        // ====== ★ CompanyProfile にも書き込んで編集画面の初期値にする ======
-        $profile = CompanyProfile::firstOrNew(['user_id' => $user->id]);
-        if (blank($profile->company_name) && filled($inv->company_name)) {
-            $profile->company_name = $inv->company_name;
-        }
-        $profile->save();
-
-        // ====== 招待を確定（accepted_at が無くてもOK） ======
-        $payload = ['status' => 'accepted'];
-        if (Schema::hasColumn($inv->getTable(), 'accepted_at')) {
-            $payload['accepted_at'] = now();
-        }
-        $inv->forceFill($payload)->save();
-
-        // ====== メール検証を済にする（MustVerifyEmail の時だけ） ======
-        if ($user instanceof MustVerifyEmail && ! $user->hasVerifiedEmail()) {
-            if (Schema::hasColumn($user->getTable(), 'email_verified_at')) {
-                $user->forceFill(['email_verified_at' => now()])->save();
+        // 単一FK
+        if (Schema::hasTable('companies') && Schema::hasColumn('companies', 'user_id')) {
+            if ((int) ($company->user_id ?? 0) !== (int) $user->id) {
+                $company->user_id = $user->id;
+                $company->save();
             }
-            event(new Verified($user));
         }
-
-        // 最新状態でログイン
-        Auth::guard('web')->logout();
-        $user->refresh();
-        Auth::guard('web')->login($user, true);
-        $request->session()->regenerate();
-
-        // 入力値も保険でフラッシュ
-        $prefillName = $profile->company_name ?: $inv->company_name;
-        $old = [
-            'name'                 => $prefillName,
-            'company_name'         => $prefillName,
-            'company.name'         => $prefillName,
-            'company.company_name' => $prefillName,
-        ];
-
-        return redirect()
-            ->route('onboarding.company.edit') // ← 編集画面(= user.company.edit)への導線でOK
-            ->withInput($old)
-            ->with('status', 'アカウントを有効化しました。まずは企業プロフィールを設定してください。');
     }
 }
