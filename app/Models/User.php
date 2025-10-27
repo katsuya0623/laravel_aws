@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Illuminate\Contracts\Auth\MustVerifyEmail; // ★追加：メール確認を必須化
+use Illuminate\Contracts\Auth\MustVerifyEmail; // ★ メール確認を必須化
 // use Laravel\Sanctum\HasApiTokens; // APIトークンが必要なら有効化
 
 // ★ Filament 用
@@ -15,10 +15,11 @@ use Filament\Panel;
 // ★ 追加：プロフィール自動作成で使用
 use App\Models\Profile;
 
-// （任意）日本語文面にしたい場合は独自通知を用意して下のメソッドで使う
+// （任意）メール日本語化通知
 // use App\Notifications\VerifyEmailJa;
+use App\Notifications\ResetPasswordJa; // ★ 追加：パスワード再設定メール日本語版
 
-class User extends Authenticatable implements FilamentUser, MustVerifyEmail // ★追加：MustVerifyEmailを実装
+class User extends Authenticatable implements FilamentUser, MustVerifyEmail
 {
     use HasFactory, Notifiable;
     // use HasApiTokens;
@@ -116,23 +117,28 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail // �
     }
 
     /* ========================
-       メール確認 通知（任意で日本語化）
+       メール通知の日本語化
        ======================== */
-    // デフォルト文面でOKならこのメソッド自体なくても動きます。
-    // 日本語件名・本文にしたい場合のみコメントアウト解除して、
-    // 上の use App\Notifications\VerifyEmailJa; も有効化してください。
+
+    // （任意）メール確認の日本語化を使う場合
     /*
     public function sendEmailVerificationNotification(): void
     {
         $this->notify(new VerifyEmailJa);
     }
     */
-    // 会社（多対多）：pivot company_user(company_id, user_id) 用
-public function companies()
-{
-    // 第3, 第4引数でキー名を明示（user_id, company_id）
-    return $this->belongsToMany(\App\Models\Company::class, 'company_user', 'user_id', 'company_id')
-                ->withTimestamps();
-}
 
+    // ★ パスワード再設定メールを日本語通知に差し替え
+    public function sendPasswordResetNotification($token): void
+    {
+        $this->notify(new ResetPasswordJa($token));
+    }
+
+    // 会社（多対多）：pivot company_user(company_id, user_id) 用
+    public function companies()
+    {
+        // 第3, 第4引数でキー名を明示（user_id, company_id）
+        return $this->belongsToMany(\App\Models\Company::class, 'company_user', 'user_id', 'company_id')
+                    ->withTimestamps();
+    }
 }

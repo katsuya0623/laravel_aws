@@ -98,7 +98,10 @@ return [
         Illuminate\Session\SessionServiceProvider::class,
         Illuminate\Translation\TranslationServiceProvider::class,
         Illuminate\Validation\ValidationServiceProvider::class,
-        Illuminate\View\ViewServiceProvider::class,   // ← これが blade.compiler を登録
+        Illuminate\View\ViewServiceProvider::class,   // ← 既存
+
+        // ✅ 今回の追加（Password facadeの内部バインド）
+        Illuminate\Auth\Passwords\PasswordResetServiceProvider::class,
 
         // Application Service Providers...
         App\Providers\AppServiceProvider::class,
@@ -110,8 +113,6 @@ return [
     |--------------------------------------------------------------------------
     | Class Aliases
     |--------------------------------------------------------------------------
-    |
-    | ここも既定のまま入れておくと便利です（必要に応じて削減可能）。
     */
     'aliases' => [
         'App'          => Illuminate\Support\Facades\App::class,
@@ -154,4 +155,6 @@ return [
         'View'         => Illuminate\Support\Facades\View::class,
     ],
 
+    // ✅ 今回の追加（CompanyInvitationController で使用）
+    'invitation_days' => (int) env('INVITATION_EXPIRES_DAYS', 7),
 ];

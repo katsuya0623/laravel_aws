@@ -19,9 +19,10 @@
           enctype="multipart/form-data"
           class="space-y-6">
       @csrf
+      @method('PATCH') {{-- ルートがPATCH/PUTの場合に対応 --}}
 
       <div class="grid md:grid-cols-2 gap-4">
-        {{-- 会社名（視覚＆操作ロック。送信もされない） --}}
+        {{-- 会社名（視覚＆操作ロック。送信もしない） --}}
         <div>
           <x-input-label for="company_name">
             会社名 <span class="text-red-500">*</span>
@@ -45,7 +46,7 @@
           </p>
         </div>
 
-        {{-- カナ --}}
+        {{-- 会社名（カナ） --}}
         <div>
           <x-input-label for="company_name_kana">
             会社名（カナ） <span class="text-red-500">*</span>
@@ -64,7 +65,7 @@
         </div>
       </div>
 
-      {{-- 紹介文 --}}
+      {{-- 事業内容 / 紹介 --}}
       <div>
         <x-input-label for="description">
           事業内容 / 紹介 <span class="text-red-500">*</span>
@@ -75,7 +76,7 @@
         <p class="text-xs text-gray-500 mt-1">最大 2000 文字</p>
       </div>
 
-      {{-- ロゴ（DBは logo_path） --}}
+      {{-- ロゴ（DBは logo_path に保存） --}}
       <div class="flex items-start gap-6">
         <div class="grow">
           <x-input-label for="logo" value="ロゴ画像（最大10MB / SVG, PNG, JPG, WebP）" />
@@ -115,26 +116,21 @@
         <div>
           <x-input-label for="website_url" value="Webサイト" />
           <x-text-input id="website_url" name="website_url" type="url" class="mt-1 block w-full"
-                        inputmode="url"
-                        maxlength="255"
-                        placeholder="https://example.com"
+                        inputmode="url" maxlength="255" placeholder="https://example.com"
                         :value="old('website_url', $company->website_url)" />
           <x-input-error :messages="$errors->get('website_url')" class="mt-2" />
         </div>
         <div>
           <x-input-label for="email" value="代表メール" />
           <x-text-input id="email" name="email" type="email" class="mt-1 block w-full"
-                        inputmode="email"
-                        maxlength="255"
-                        placeholder="info@example.com"
+                        inputmode="email" maxlength="255" placeholder="info@example.com"
                         :value="old('email', $company->email)" />
           <x-input-error :messages="$errors->get('email')" class="mt-2" />
         </div>
         <div>
           <x-input-label for="tel" value="電話番号" />
           <x-text-input id="tel" name="tel" type="text" class="mt-1 block w-full"
-                        inputmode="tel"
-                        maxlength="20"
+                        inputmode="tel" maxlength="20"
                         placeholder="03-1234-5678 / +81-3-1234-5678"
                         :value="old('tel', $company->tel)" />
           <x-input-error :messages="$errors->get('tel')" class="mt-2" />
@@ -148,11 +144,8 @@
             郵便番号 <span class="text-red-500">*</span>
           </x-input-label>
           <x-text-input id="postal_code" name="postal_code" type="text" class="mt-1 block w-full"
-                        inputmode="numeric"
-                        pattern="^\d{3}-?\d{4}$"
-                        placeholder="123-4567"
-                        required
-                        :value="old('postal_code', $company->postal_code)" />
+                        inputmode="numeric" pattern="^\d{3}-?\d{4}$" placeholder="123-4567"
+                        required :value="old('postal_code', $company->postal_code)" />
           <x-input-error :messages="$errors->get('postal_code')" class="mt-2" />
         </div>
         <div>
@@ -160,8 +153,7 @@
             都道府県 <span class="text-red-500">*</span>
           </x-input-label>
           <x-text-input id="prefecture" name="prefecture" type="text" class="mt-1 block w-full"
-                        maxlength="255" required
-                        :value="old('prefecture', $company->prefecture)" />
+                        maxlength="255" required :value="old('prefecture', $company->prefecture)" />
           <x-input-error :messages="$errors->get('prefecture')" class="mt-2" />
         </div>
         <div>
@@ -169,8 +161,7 @@
             市区町村 <span class="text-red-500">*</span>
           </x-input-label>
           <x-text-input id="city" name="city" type="text" class="mt-1 block w-full"
-                        maxlength="255" required
-                        :value="old('city', $company->city)" />
+                        maxlength="255" required :value="old('city', $company->city)" />
           <x-input-error :messages="$errors->get('city')" class="mt-2" />
         </div>
       </div>
@@ -181,15 +172,13 @@
             番地・建物 <span class="text-red-500">*</span>
           </x-input-label>
           <x-text-input id="address1" name="address1" type="text" class="mt-1 block w-full"
-                        maxlength="255" required
-                        :value="old('address1', $company->address1)" />
+                        maxlength="255" required :value="old('address1', $company->address1)" />
           <x-input-error :messages="$errors->get('address1')" class="mt-2" />
         </div>
         <div>
           <x-input-label for="address2" value="部屋番号など" />
           <x-text-input id="address2" name="address2" type="text" class="mt-1 block w-full"
-                        maxlength="255"
-                        :value="old('address2', $company->address2)" />
+                        maxlength="255" :value="old('address2', $company->address2)" />
           <x-input-error :messages="$errors->get('address2')" class="mt-2" />
         </div>
       </div>
@@ -201,8 +190,7 @@
             業種 <span class="text-red-500">*</span>
           </x-input-label>
           <x-text-input id="industry" name="industry" type="text" class="mt-1 block w-full"
-                        maxlength="255" required
-                        :value="old('industry', $company->industry)" />
+                        maxlength="255" required :value="old('industry', $company->industry)" />
           <x-input-error :messages="$errors->get('industry')" class="mt-2" />
         </div>
         <div>
@@ -210,8 +198,7 @@
             従業員数 <span class="text-red-500">*</span>
           </x-input-label>
           <x-text-input id="employees" name="employees" type="number" min="1" max="1000000" step="1"
-                        class="mt-1 block w-full" required
-                        :value="old('employees', $company->employees)" />
+                        class="mt-1 block w-full" required :value="old('employees', $company->employees)" />
           <x-input-error :messages="$errors->get('employees')" class="mt-2" />
         </div>
         <div>

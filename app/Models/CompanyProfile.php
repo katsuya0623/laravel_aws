@@ -4,23 +4,43 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Support\Facades\Validator; // ★ 追加
+use Illuminate\Support\Facades\Validator;
 
 class CompanyProfile extends Model
 {
     use HasFactory;
 
     protected $fillable = [
+        // 紐づく会社
+        'company_id',
+
         // 互換：代表担当者（単一）
         'user_id',
 
-        'company_name','company_name_kana','description','logo_path',
-        'website_url','email','tel',
-        'postal_code','prefecture','city','address1','address2',
-        'industry','employees','founded_on',
+        // 基本情報
+        'company_name',
+        'company_name_kana',
+        'description',
+        'logo_path',
+        'website_url',
+        'email',
+        'tel',
 
-        // 追加
-        'is_completed','completed_at',
+        // 住所
+        'postal_code',
+        'prefecture',
+        'city',
+        'address1',
+        'address2',
+
+        // 任意メタ
+        'industry',
+        'employees',
+        'founded_on',
+
+        // 完了管理
+        'is_completed',
+        'completed_at',
     ];
 
     protected $casts = [
@@ -28,7 +48,18 @@ class CompanyProfile extends Model
         'founded_on'   => 'date',
         'is_completed' => 'boolean',
         'completed_at' => 'datetime',
+        'created_at'   => 'datetime',
+        'updated_at'   => 'datetime',
     ];
+
+    /* ------------------------------
+     |  リレーション
+     |------------------------------*/
+    /** 紐づく会社 */
+    public function company()
+    {
+        return $this->belongsTo(\App\Models\Company::class);
+    }
 
     /** 代表担当者（単一・互換列 user_id） */
     public function user()
@@ -40,7 +71,7 @@ class CompanyProfile extends Model
     public function users()
     {
         return $this->belongsToMany(\App\Models\User::class, 'company_user')
-                    ->withTimestamps();
+            ->withTimestamps();
     }
 
     /** 代表担当者を設定（互換列へミラー） */
@@ -53,35 +84,34 @@ class CompanyProfile extends Model
     /** 代表担当者の取得（null許容の糖衣） */
     public function primaryUser(): ?\App\Models\User
     {
-        return $this->user; // $company->primaryUser() でも取れるように
+        return $this->user;
     }
 
     /* ============================================================
-       ↓ ここから：フロント表示制御用の完了判定（厳格版）
+       完了判定（フロント表示制御用）
        ============================================================ */
 
-    /**
-     * 必須の充足 + 形式バリデーション（全部OKなら true）
-     * ここを満たすまで is_completed は立たない
-     */
+    /** 必須の充足 + 形式バリデーション（全部OKなら true） */
     public function passesCompletionValidation(): bool
     {
         // まず「必須が埋まっているか」を軽くチェック
         $required = [
-            'postal_code','prefecture','city','address1',
-            'industry','employees','email',
+            'postal_code', 'prefecture', 'city', 'address1',
+            'industry', 'employees', 'email',
         ];
         foreach ($required as $key) {
-            if (!filled($this->{$key})) return false;
+            if (!filled($this->{$key})) {
+                return false;
+            }
         }
 
         // 形式チェック（Laravel Validator）
         $v = Validator::make($this->getAttributes(), [
-            'email'       => ['required','email','max:255'],
-            'website_url' => ['nullable','url','max:255'],
-            'tel'         => ['nullable','regex:/^\+?[0-9\-\s()]{7,20}$/'],
-            'postal_code' => ['required','string','max:20'],
-            'employees'   => ['required','integer','min:1'],
+            'email'       => ['required', 'email', 'max:255'],
+            'website_url' => ['nullable', 'url', 'max:255'],
+            'tel'         => ['nullable', 'regex:/^\+?[0-9\-\s()]{7,20}$/'],
+            'postal_code' => ['required', 'string', 'max:20'],
+            'employees'   => ['required', 'integer', 'min:1'],
         ]);
 
         return !$v->fails();
@@ -97,11 +127,10 @@ class CompanyProfile extends Model
     public function syncCompletionFlags(): void
     {
         $done = $this->passesCompletionValidation();
-        $now  = now();
 
         if ($done && !$this->is_completed) {
             $this->is_completed = true;
-            $this->completed_at = $now;
+            $this->completed_at = now();
             $this->saveQuietly(); // イベント発火せず更新
         } elseif (!$done && $this->is_completed) {
             // 条件を満たさなくなったら完了を剥奪

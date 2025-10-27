@@ -7,7 +7,6 @@ use Illuminate\Http\Request;
 use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Middleware\EnsureCompanyProfileCompleted; // ★追加
 
-
 // Top / Front
 use App\Http\Controllers\Front\LandingController;
 use App\Http\Controllers\Front\CompanyController as FCompanyController;
@@ -20,7 +19,6 @@ use App\Http\Controllers\Admin\PostController as AdminPostController;
 use App\Http\Controllers\Admin\ApplicationsController;
 use App\Http\Controllers\Admin\CompanyUserAssignController;
 use App\Http\Controllers\Admin\UserQuickAssignController;
-use App\Http\Controllers\Auth\CompanyInviteAcceptController;
 
 // ★ 招待＆オンボーディング用
 use App\Http\Controllers\Admin\CompanyInvitationController;
@@ -306,6 +304,12 @@ Route::prefix('admin')->middleware(['auth:admin'])->name('admin.')->group(functi
     Route::get('applications',        [ApplicationsController::class, 'index'])->name('applications.index');
     Route::get('applications/export', [ApplicationsController::class, 'export'])->name('applications.export');
 
+    // ★ 会社×メールでパスワードリセット（ユーザー未作成でも作成→紐付け→送信）
+    Route::post(
+        '/companies/{company}/send-reset-by-email',
+        [\App\Http\Controllers\Admin\CompanyInvitationController::class, 'sendResetByEmail']
+    )->whereNumber('company')->name('companies.send_reset_by_email');
+
     // アップロード疎通テスト
     Route::match(['get', 'post'], 'posts/__upload-test', function (Request $r) {
         if ($r->isMethod('post')) {
@@ -364,6 +368,32 @@ Route::post('/email/verification-notification', function (\Illuminate\Http\Reque
     return back()->with('status', 'verification-link-sent');
 })->middleware(['auth', 'throttle:3,1'])->name('verification.send');
 
+/* ===== ★ Password Reset（通知が参照する password.reset のフォールバック） ===== */
+if (! Route::has('password.reset')) {
+    Route::middleware('guest')->group(function () {
+        // Breeze コントローラが存在するならそれを使う
+        if (class_exists(\App\Http\Controllers\Auth\PasswordResetLinkController::class)
+            && class_exists(\App\Http\Controllers\Auth\NewPasswordController::class)) {
+
+            Route::get('/forgot-password',  [\App\Http\Controllers\Auth\PasswordResetLinkController::class, 'create'])->name('password.request');
+            Route::post('/forgot-password', [\App\Http\Controllers\Auth\PasswordResetLinkController::class, 'store'])->name('password.email');
+
+            // ★ ResetPassword通知が参照する本命
+            Route::get('/reset-password/{token}', [\App\Http\Controllers\Auth\NewPasswordController::class, 'create'])->name('password.reset');
+            Route::post('/reset-password',        [\App\Http\Controllers\Auth\NewPasswordController::class, 'store'])->name('password.store');
+
+        } else {
+            // 最低限：リンク先のプレースホルダ（ビューは用意してください）
+            Route::get('/reset-password/{token}', function (string $token) {
+                return view('auth.reset-password', [
+                    'token' => $token,
+                    'email' => request('email'),
+                ]);
+            })->name('password.reset');
+        }
+    });
+}
+
 /* ===== Breeze Profile ===== */
 Route::middleware('auth:web')->group(function () {
     if (class_exists(ProfileController::class)) {
@@ -402,13 +432,15 @@ Route::middleware('auth:web')->put('/password', [PasswordController::class, 'upd
 
 // ===== 招待受諾フロー =====
 Route::prefix('invites')->name('invites.')->group(function () {
-    // 受諾フォーム表示（※署名付きURLは使っていないので 'signed' を外す）
+    // 受諾フォーム表示（署名は使わない）
     Route::get('/accept/{token}', [InviteAcceptController::class, 'show'])
+        ->where('token', '[A-Za-z0-9]{20,}')
         ->middleware(['throttle:20,1'])
         ->name('accept');
 
     // 受諾の完了（パスワード設定 & 紐付け）
     Route::post('/accept/{token}', [InviteAcceptController::class, 'accept'])
+        ->where('token', '[A-Za-z0-9]{20,}')
         ->middleware(['throttle:20,1'])
         ->name('accept.post');
 
@@ -416,7 +448,12 @@ Route::prefix('invites')->name('invites.')->group(function () {
     Route::view('/expired', 'invites.expired')->name('expired');
 });
 
-
-Route::get('/invite/{token}', [CompanyInviteAcceptController::class, 'accept'])
-    ->name('company.invite.accept')   // 好きな名前でOK
-    ->middleware('web');              // 認証前でも踏めるように
+// 短縮リンク：/invite/{token} → 本命ルートへ委譲
+Route::get(
+    '/invite/{token}',
+    fn($token) =>
+    redirect()->route('invites.accept', ['token' => $token])
+)
+    ->where('token', '[A-Za-z0-9]{20,}')
+    ->middleware(['guest', 'throttle:20,1'])
+    ->name('company.invite.accept');

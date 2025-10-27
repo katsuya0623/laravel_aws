@@ -2,47 +2,56 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Company;
 use App\Models\CompanyProfile;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;        // ★ 追加
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use App\Services\LogoStorage;
-// ★ 追加
 use App\Support\RoleResolver;
+use App\Services\CompanyAutoLinker;
 
 class CompanyProfileController extends Controller
 {
     /** 編集画面 */
     public function edit()
     {
-        $company = CompanyProfile::firstOrNew(['user_id' => Auth::id()]);
+        $company = $this->resolveCompanyForUser();
 
-        // ★ 追加：レイアウトに渡すロール
+        if ($company) {
+            $profile = CompanyProfile::firstOrCreate(
+                ['company_id' => $company->id],
+                [
+                    'user_id'           => $company->user_id ?? Auth::id(),
+                    'company_name'      => $company->name,
+                    'company_name_kana' => null,
+                ]
+            );
+        } else {
+            $profile = CompanyProfile::firstOrNew(['user_id' => Auth::id()]);
+        }
+
         $role = RoleResolver::resolve(Auth::user());
 
-        return view('company.edit', compact('company', 'role')); // ← ここで渡す
+        return view('company.edit', [
+            'company' => $profile, // Blade 側は $company 変数を使っているため名称そのまま
+            'role'    => $role,
+        ]);
     }
 
-    /** 新規登録 or 更新（POST用） */
-    public function store(Request $request)
-    {
-        return $this->saveProfile($request);
-    }
+    public function store(Request $request) { return $this->saveProfile($request); }
+    public function update(Request $request) { return $this->saveProfile($request); }
 
-    /** 更新（PUT/PATCH用） */
-    public function update(Request $request)
-    {
-        return $this->saveProfile($request);
-    }
-
-    /** 共通の保存処理 */
+    /** 共通の保存処理（DB 直 upsert 版） */
     private function saveProfile(Request $request)
     {
         // 会社名はフォームに来ても後で必ず無視（企業側は変更不可）
         $data = $request->validate(
             [
-                'company_name'       => ['nullable', 'string', 'max:30'],
+                'company_name'       => ['nullable','string','max:30'],
                 'company_name_kana'  => ['required','string','max:255','regex:/^[ァ-ヶー－\s　]+$/u'],
                 'description'        => ['required','string','max:2000'],
                 'website_url'        => ['nullable','url','max:255'],
@@ -79,57 +88,118 @@ class CompanyProfileController extends Controller
                 'employees.min'                => '従業員数は1以上で入力してください。',
                 'employees.max'                => '従業員数が大きすぎます。',
                 'founded_on.before_or_equal'   => '設立日は本日以前の日付を指定してください。',
-            ],
-            [
-                'company_name'      => '会社名',
-                'company_name_kana' => '会社名（カナ）',
-                'description'       => '事業内容 / 紹介',
-                'website_url'       => 'Webサイト',
-                'email'             => '代表メール',
-                'tel'               => '電話番号',
-                'postal_code'       => '郵便番号',
-                'prefecture'        => '都道府県',
-                'city'              => '市区町村',
-                'address1'          => '番地・建物',
-                'address2'          => '部屋番号など',
-                'industry'          => '業種',
-                'employees'         => '従業員数',
-                'founded_on'        => '設立日',
-                'logo'              => 'ロゴ画像',
             ]
         );
 
-        $company = CompanyProfile::firstOrNew(['user_id' => Auth::id()]);
+        // 会社特定
+        $linkedCompany = $this->resolveCompanyForUser();
 
-        unset($data['company_name']); // 企業側は変更不可
+        // 会社名は企業側で変更不可：常に無視（既存値保持）
+        unset($data['company_name']);
 
-        $company->fill($data);
-        $company->user_id = Auth::id();
-
-        if ($request->boolean('remove_logo')) {
-            if ($company->logo_path && Storage::disk('public')->exists($company->logo_path)) {
-                Storage::disk('public')->delete($company->logo_path);
-            }
-            $company->logo_path = null;
+        // まず既存レコードを company_id 優先 / なければ user_id で取得
+        $where = [];
+        if ($linkedCompany && Schema::hasColumn('company_profiles', 'company_id')) {
+            $where['company_id'] = $linkedCompany->id;
+        } else {
+            $where['user_id'] = Auth::id();
         }
 
+        // 既存行
+        $existing = DB::table('company_profiles')->where($where)->first();
+
+        // ロゴ削除 / 差し替えに備えて、現在の logo_path を把握
+        $currentLogo = $existing->logo_path ?? null;
+
+        // ロゴ削除
+        if ($request->boolean('remove_logo')) {
+            if ($currentLogo && Storage::disk('public')->exists($currentLogo)) {
+                Storage::disk('public')->delete($currentLogo);
+            }
+            $currentLogo = null;
+        }
+
+        // ロゴアップロード差し替え
         if ($request->hasFile('logo')) {
             $newPath = $this->storeLogo($request->file('logo'));
-            if ($company->logo_path && Storage::disk('public')->exists($company->logo_path)) {
-                Storage::disk('public')->delete($company->logo_path);
+            if ($currentLogo && Storage::disk('public')->exists($currentLogo)) {
+                Storage::disk('public')->delete($currentLogo);
             }
-            $company->logo_path = $newPath;
+            $currentLogo = $newPath;
         }
 
-        $company->save();
+        // upsert 用のペイロードを構築（存在するカラムだけ入れる）
+        $columns = [
+            'company_name_kana','description','website_url','email','tel',
+            'postal_code','prefecture','city','address1','address2',
+            'industry','employees','founded_on','logo_path',
+        ];
+        $payload = [];
+        foreach ($columns as $col) {
+            if ($col === 'logo_path') {
+                $payload['logo_path'] = $currentLogo;
+                continue;
+            }
+            if (Schema::hasColumn('company_profiles', $col)) {
+                $payload[$col] = $data[$col] ?? null;
+            }
+        }
 
-        if (method_exists($company, 'syncCompletionFlags')) {
-            $company->syncCompletionFlags();
+        // 主キー系を明示
+        $payload['user_id'] = Auth::id();
+        if ($linkedCompany && Schema::hasColumn('company_profiles', 'company_id')) {
+            $payload['company_id'] = $linkedCompany->id;
+        }
+        if (Schema::hasColumn('company_profiles', 'company_name') && $linkedCompany) {
+            // 初期化（空なら companies.name を持っておく）
+            $payload['company_name'] = $existing->company_name ?? $linkedCompany->name;
+        }
+
+        // タイムスタンプ
+        $now = now();
+        if ($existing) {
+            if (Schema::hasColumn('company_profiles', 'updated_at')) {
+                $payload['updated_at'] = $now;
+            }
+            DB::table('company_profiles')->where('id', $existing->id)->update($payload);
+        } else {
+            if (Schema::hasColumn('company_profiles', 'created_at')) {
+                $payload['created_at'] = $now;
+            }
+            if (Schema::hasColumn('company_profiles', 'updated_at')) {
+                $payload['updated_at'] = $now;
+            }
+            DB::table('company_profiles')->updateOrInsert($where, $payload);
+        }
+
+        // 完了フラグ同期（存在すれば）
+        if (class_exists(CompanyProfile::class)) {
+            $profile = CompanyProfile::where($where)->first();
+            if ($profile && method_exists($profile, 'syncCompletionFlags')) {
+                $profile->syncCompletionFlags();
+            }
+        }
+
+        // オートリンク（必要に応じて）
+        try {
+            CompanyAutoLinker::link(
+                Auth::user(),
+                [
+                    'company_name'      => $linkedCompany->name ?? ($existing->company_name ?? null),
+                    'create_if_missing' => true,
+                ]
+            );
+        } catch (\Throwable $e) {
+            \Log::warning('auto-link failed after company profile save', [
+                'user_id' => Auth::id(),
+                'error'   => $e->getMessage(),
+            ]);
         }
 
         return redirect()->route('user.company.edit')->with('status', '企業情報を保存しました。');
     }
 
+    /** ロゴ保存（サービス優先／フォールバックあり） */
     private function storeLogo(UploadedFile $file): string
     {
         if (class_exists(LogoStorage::class)) {
@@ -138,7 +208,7 @@ class CompanyProfileController extends Controller
                 if (is_string($stored) && $stored !== '') {
                     return ltrim($stored, '/');
                 }
-            } catch (\Throwable $e) {}
+            } catch (\Throwable $e) { /* fallback */ }
         }
 
         $dir  = 'company_logos';
@@ -146,5 +216,37 @@ class CompanyProfileController extends Controller
         $name = now()->format('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
 
         return $file->storeAs($dir, $name, 'public');
+    }
+
+    /** ログインユーザーに紐づく Company を推定 */
+    private function resolveCompanyForUser(): ?Company
+    {
+        $userId = Auth::id();
+
+        if (Schema::hasTable('companies') && Schema::hasColumn('companies', 'user_id')) {
+            if ($c = Company::where('user_id', $userId)->first()) {
+                return $c;
+            }
+        }
+
+        if (Schema::hasTable('company_profiles') && Schema::hasColumn('company_profiles', 'company_id')) {
+            $companyId = CompanyProfile::where('user_id', $userId)->value('company_id');
+            if ($companyId && ($c = Company::find($companyId))) {
+                return $c;
+            }
+        }
+
+        if (
+            Schema::hasTable('company_user') &&
+            Schema::hasColumn('company_user', 'user_id') &&
+            Schema::hasColumn('company_user', 'company_id')
+        ) {
+            $cid = \DB::table('company_user')->where('user_id', $userId)->value('company_id');
+            if ($cid && ($c = Company::find($cid))) {
+                return $c;
+            }
+        }
+
+        return null;
     }
 }
