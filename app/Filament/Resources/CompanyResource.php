@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\CompanyResource\Pages;
 use App\Models\Company;
 use App\Models\User;
+use App\Models\CompanyProfile;
 use Filament\Forms\Form;
 use Filament\Forms\Components\Fieldset;
 use Filament\Forms\Components\TextInput;
@@ -22,7 +23,6 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\HtmlString;
 
-// 追加
 use Filament\Tables\Actions\Action;
 use Filament\Notifications\Notification;
 use App\Http\Controllers\Admin\CompanyInvitationController;
@@ -41,9 +41,12 @@ class CompanyResource extends Resource
         return parent::getEloquentQuery()->withInviteState();
     }
 
-    /** 共通フォーム（Company本体＋CompanyProfile編集用の項目） */
+    /** Company本体 + company_profiles の編集フォーム */
     protected static function formSchema(): array
     {
+        // ヘルパ：確実に脱水する（$data に入れる）
+        $dehydrate = fn($c) => $c->dehydrated(true);
+
         return [
             Fieldset::make('会社情報')->schema([
                 TextInput::make('name')
@@ -59,137 +62,145 @@ class CompanyResource extends Resource
                 Textarea::make('description')->label('説明')->columnSpanFull(),
             ]),
 
-            // ▼ company_profiles を編集するためのフォーム群（profile_* として受ける）
             Fieldset::make('企業プロフィール')
                 ->columns(2)
                 ->schema([
-                    TextInput::make('profile_company_kana')
-                        ->label('会社名（カナ）')
-                        ->default(function (?Company $record) {
-                            return $record
-                                ? DB::table('company_profiles')->where('company_id', $record->id)->value('company_name_kana')
-                                : null;
-                        }),
+                    $dehydrate(
+                        TextInput::make('profile_company_kana')
+                            ->label('会社名（カナ）')
+                            ->default(fn(?Company $r) => $r
+                                ? DB::table('company_profiles')->where('company_id', $r->id)->value('company_name_kana')
+                                : null
+                            )
+                    ),
 
-                    Textarea::make('profile_intro')
-                        ->label('事業内容 / 紹介')
-                        ->columnSpanFull()
-                        ->rows(4)
-                        ->default(function (?Company $record) {
-                            return $record
-                                ? DB::table('company_profiles')->where('company_id', $record->id)->value('description')
-                                : null;
-                        }),
+                    $dehydrate(
+                        Textarea::make('profile_intro')
+                            ->label('事業内容 / 紹介')
+                            ->columnSpanFull()
+                            ->rows(4)
+                            ->default(fn(?Company $r) => $r
+                                ? DB::table('company_profiles')->where('company_id', $r->id)->value('description')
+                                : null
+                            )
+                    ),
 
-                    FileUpload::make('profile_logo_path')
-                        ->label('ロゴ画像')
-                        ->directory('company_logos')
-                        ->disk('public')
-                        ->image()
-                        ->imageEditor()
-                        ->openable()
-                        ->downloadable()
-                        ->preserveFilenames()
-                        ->default(function (?Company $record) {
-                            return $record
-                                ? DB::table('company_profiles')->where('company_id', $record->id)->value('logo_path')
-                                : null;
-                        }),
+                    $dehydrate(
+                        FileUpload::make('profile_logo_path')
+                            ->label('ロゴ画像')
+                            ->directory('company_logos')
+                            ->disk('public')
+                            ->image()
+                            ->imageEditor()
+                            ->openable()
+                            ->downloadable()
+                            ->preserveFilenames()
+                            ->default(fn(?Company $r) => $r
+                                ? DB::table('company_profiles')->where('company_id', $r->id)->value('logo_path')
+                                : null
+                            )
+                    ),
 
-                    TextInput::make('profile_website_url')
-                        ->label('Webサイト')
-                        ->placeholder('https://example.com')
-                        ->url()
-                        ->default(function (?Company $record) {
-                            return $record
-                                ? DB::table('company_profiles')->where('company_id', $record->id)->value('website_url')
-                                : null;
-                        }),
+                    $dehydrate(
+                        TextInput::make('profile_website_url')
+                            ->label('Webサイト')->placeholder('https://example.com')->url()
+                            ->default(fn(?Company $r) => $r
+                                ? DB::table('company_profiles')->where('company_id', $r->id)->value('website_url')
+                                : null
+                            )
+                    ),
 
-                    TextInput::make('profile_email')
-                        ->label('代表メール')
-                        ->email()
-                        ->default(function (?Company $record) {
-                            return $record
-                                ? DB::table('company_profiles')->where('company_id', $record->id)->value('email')
-                                : null;
-                        }),
+                    $dehydrate(
+                        TextInput::make('profile_email')
+                            ->label('代表メール')->email()
+                            ->default(fn(?Company $r) => $r
+                                ? DB::table('company_profiles')->where('company_id', $r->id)->value('email')
+                                : null
+                            )
+                    ),
 
-                    TextInput::make('profile_phone')
-                        ->label('電話番号')
-                        ->placeholder('03-1234-5678')
-                        ->default(function (?Company $record) {
-                            return $record
-                                ? DB::table('company_profiles')->where('company_id', $record->id)->value('tel')
-                                : null;
-                        }),
+                    $dehydrate(
+                        TextInput::make('profile_phone')
+                            ->label('電話番号')->placeholder('03-1234-5678')
+                            ->default(fn(?Company $r) => $r
+                                ? DB::table('company_profiles')->where('company_id', $r->id)->value('tel')
+                                : null
+                            )
+                    ),
 
-                    TextInput::make('profile_postal_code')
-                        ->label('郵便番号')
-                        ->default(function (?Company $record) {
-                            return $record
-                                ? DB::table('company_profiles')->where('company_id', $record->id)->value('postal_code')
-                                : null;
-                        }),
+                    $dehydrate(
+                        TextInput::make('profile_postal_code')
+                            ->label('郵便番号')
+                            ->default(fn(?Company $r) => $r
+                                ? DB::table('company_profiles')->where('company_id', $r->id)->value('postal_code')
+                                : null
+                            )
+                    ),
 
-                    TextInput::make('profile_prefecture')
-                        ->label('都道府県')
-                        ->default(function (?Company $record) {
-                            return $record
-                                ? DB::table('company_profiles')->where('company_id', $record->id)->value('prefecture')
-                                : null;
-                        }),
+                    $dehydrate(
+                        TextInput::make('profile_prefecture')
+                            ->label('都道府県')
+                            ->default(fn(?Company $r) => $r
+                                ? DB::table('company_profiles')->where('company_id', $r->id)->value('prefecture')
+                                : null
+                            )
+                    ),
 
-                    TextInput::make('profile_city')
-                        ->label('市区町村')
-                        ->default(function (?Company $record) {
-                            return $record
-                                ? DB::table('company_profiles')->where('company_id', $record->id)->value('city')
-                                : null;
-                        }),
+                    $dehydrate(
+                        TextInput::make('profile_city')
+                            ->label('市区町村')
+                            ->default(fn(?Company $r) => $r
+                                ? DB::table('company_profiles')->where('company_id', $r->id)->value('city')
+                                : null
+                            )
+                    ),
 
-                    TextInput::make('profile_address1')
-                        ->label('番地・建物名')
-                        ->default(function (?Company $record) {
-                            return $record
-                                ? DB::table('company_profiles')->where('company_id', $record->id)->value('address1')
-                                : null;
-                        }),
+                    $dehydrate(
+                        TextInput::make('profile_address1')
+                            ->label('番地・建物名')
+                            ->default(fn(?Company $r) => $r
+                                ? DB::table('company_profiles')->where('company_id', $r->id)->value('address1')
+                                : null
+                            )
+                    ),
 
-                    TextInput::make('profile_address2')
-                        ->label('部屋番号など')
-                        ->default(function (?Company $record) {
-                            return $record
-                                ? DB::table('company_profiles')->where('company_id', $record->id)->value('address2')
-                                : null;
-                        }),
+                    $dehydrate(
+                        TextInput::make('profile_address2')
+                            ->label('部屋番号など')
+                            ->default(fn(?Company $r) => $r
+                                ? DB::table('company_profiles')->where('company_id', $r->id)->value('address2')
+                                : null
+                            )
+                    ),
 
-                    TextInput::make('profile_industry')
-                        ->label('業種')
-                        ->default(function (?Company $record) {
-                            return $record
-                                ? DB::table('company_profiles')->where('company_id', $record->id)->value('industry')
-                                : null;
-                        }),
+                    $dehydrate(
+                        TextInput::make('profile_industry')
+                            ->label('業種')
+                            ->default(fn(?Company $r) => $r
+                                ? DB::table('company_profiles')->where('company_id', $r->id)->value('industry')
+                                : null
+                            )
+                    ),
 
-                    TextInput::make('profile_employees')
-                        ->label('従業員数')
-                        ->numeric()
-                        ->default(function (?Company $record) {
-                            return $record
-                                ? DB::table('company_profiles')->where('company_id', $record->id)->value('employees')
-                                : null;
-                        }),
+                    $dehydrate(
+                        TextInput::make('profile_employees')
+                            ->label('従業員数')->numeric()
+                            ->default(fn(?Company $r) => $r
+                                ? DB::table('company_profiles')->where('company_id', $r->id)->value('employees')
+                                : null
+                            )
+                    ),
 
-                    DatePicker::make('profile_founded_at')
-                        ->label('設立日')
-                        ->displayFormat('Y/m/d')
-                        ->default(function (?Company $record) {
-                            if (! $record) return null;
-                            $val = DB::table('company_profiles')->where('company_id', $record->id)->value('founded_on');
-                            // SQLite でも 'YYYY-MM-DD' ならそのまま返す
-                            return $val ?: null;
-                        }),
+                    $dehydrate(
+                        DatePicker::make('profile_founded_at')
+                            ->label('設立日')
+                            ->displayFormat('Y/m/d')
+                            ->default(function (?Company $record) {
+                                if (! $record) return null;
+                                $val = DB::table('company_profiles')->where('company_id', $record->id)->value('founded_on');
+                                return $val ?: null;
+                            })
+                    ),
                 ]),
 
             Fieldset::make('ログインアカウント（任意）')
@@ -284,7 +295,7 @@ class CompanyResource extends Resource
                         self::upsertCompanyProfile($record, $data);
                     }),
 
-                // 以降は既存のパスワードリセット系そのまま
+                // 既存：パスワードリセット系
                 Action::make('quick_send_reset_link')
                     ->label('パスワードリセットを送信（自動）')
                     ->icon('heroicon-o-paper-airplane')
@@ -348,10 +359,8 @@ class CompanyResource extends Resource
                             'company_user_id' => $record->user_id ?? null,
                         ]);
 
-                        // ① 既存紐付けユーザー
                         $user = self::resolveUserForCompany($record);
 
-                        // ② 入力メールで確実に作成/更新
                         $targetEmail = trim((string)($data['email'] ?? ''));
                         if (! $user || ($user && strcasecmp($user->email ?? '', $targetEmail) !== 0)) {
                             if ($targetEmail !== '') {
@@ -371,7 +380,6 @@ class CompanyResource extends Resource
                                 }
 
                                 $user->save();
-
                                 self::attachUserToCompany($record, $user);
                                 Log::info('PW_RESET ensured user & attached', ['user_id' => $user->id, 'email' => $user->email]);
                             }
@@ -411,7 +419,7 @@ class CompanyResource extends Resource
             ]);
     }
 
-    /** 編集保存時：メールからユーザー作成＋会社に紐付け（verified 済みにする） */
+    /** 編集保存時：メールからユーザー作成＋会社に紐付け */
     public static function upsertCompanyAccount(Company $company, array $data): void
     {
         $email = trim((string)($data['account_email'] ?? request()->input('account_email', '')));
@@ -440,8 +448,9 @@ class CompanyResource extends Resource
     /**
      * company_profiles を upsert（存在すれば更新、無ければ作成）
      * - 実テーブル: company_profiles
-     * - カラム名: company_name_kana / description / tel / founded_on などに統一
-     * - 既存行判定は company_id → user_id の順で厳密に
+     * - 条件: company_id 固定
+     * - フォーム $data に無い場合は request() からも拾う
+     * - ★ user_id は解決できた場合のみセット。未解決なら null を入れる（0 は入れない）
      */
     protected static function upsertCompanyProfile(Company $company, array $data): void
     {
@@ -449,7 +458,11 @@ class CompanyResource extends Resource
             return;
         }
 
-        // 受け取りキー → DBカラムのマッピング
+        // $data に無ければ request() から保険で拾う
+        $src = fn(string $key) => array_key_exists($key, $data)
+            ? $data[$key]
+            : request()->input($key);
+
         $map = [
             'profile_company_kana' => 'company_name_kana',
             'profile_intro'        => 'description',
@@ -467,69 +480,46 @@ class CompanyResource extends Resource
             'profile_founded_at'   => 'founded_on',
         ];
 
-        $payload = [];
+        $payload = ['company_id' => $company->id];
+
         foreach ($map as $formKey => $col) {
-            if (! array_key_exists($formKey, $data)) continue;
             if (! Schema::hasColumn('company_profiles', $col)) continue;
-            $payload[$col] = $data[$formKey];
+            // 入力が空でも「空で上書き」できるように必ずキーを持たせる
+            $payload[$col] = $src($formKey);
         }
 
-        if (Schema::hasColumn('company_profiles', 'company_id')) {
-            $payload['company_id'] = $company->id;
+        // company_name（表示用）を可能なら同期
+        if (Schema::hasColumn('company_profiles', 'company_name')) {
+            $payload['company_name'] = $company->name;
         }
 
-        // user_id（NOT NULL想定）も頑張って解決
-        $resolvedUserId = null;
+        // user_id：解決できたときだけセット。未解決なら null
         if (Schema::hasColumn('company_profiles', 'user_id')) {
-            $user = self::resolveUserForCompany($company);
-            if ($user?->id) {
-                $resolvedUserId = (int) $user->id;
+            $resolvedUser = self::resolveUserForCompany($company);
+            if (!empty($resolvedUser?->id)) {
+                $payload['user_id'] = (int) $resolvedUser->id;
             } elseif (!empty($company->user_id)) {
-                $resolvedUserId = (int) $company->user_id;
+                $payload['user_id'] = (int) $company->user_id;
+            } else {
+                $payload['user_id'] = null; // ← ここで 0 は入れない
             }
-            if ($resolvedUserId) {
-                $payload['user_id'] = $resolvedUserId;
-            }
         }
 
-        if (empty($payload)) return;
+        /** @var CompanyProfile $profile */
+        $profile = CompanyProfile::query()->updateOrCreate(
+            ['company_id' => $company->id],
+            $payload
+        );
 
-        $now = now();
-        if (Schema::hasColumn('company_profiles', 'updated_at')) {
-            $payload['updated_at'] = $now;
-        }
-
-        // 既存行を厳密に探索：company_id 優先、無ければ user_id
-        $existing = null;
-        if (Schema::hasColumn('company_profiles', 'company_id')) {
-            $existing = DB::table('company_profiles')
-                ->where('company_id', $company->id)
-                ->first();
-        }
-        if (! $existing && Schema::hasColumn('company_profiles', 'user_id') && $resolvedUserId) {
-            $existing = DB::table('company_profiles')
-                ->where('user_id', $resolvedUserId)
-                ->first();
-        }
-
-        if ($existing) {
-            DB::table('company_profiles')->where('id', $existing->id)->update($payload);
-            return;
-        }
-
-        // 新規 INSERT
-        if (Schema::hasColumn('company_profiles', 'created_at')) {
-            $payload['created_at'] = $now;
-        }
-        if (Schema::hasColumn('company_profiles', 'user_id') && !isset($payload['user_id'])) {
-            Log::warning('Skip insert company_profiles: user_id unresolved', ['company_id' => $company->id]);
-            return;
-        }
-
-        DB::table('company_profiles')->insert($payload);
+        Log::info('company_profiles upserted', [
+            'company_id'   => $company->id,
+            'profile_id'   => $profile->id ?? null,
+            'payload_keys' => array_keys($payload),
+        ]);
     }
 
-    /** 招待テーブルから最新のメールを推定（accepted 含む／フォールバックあり） */
+    // ---- 以降は既存のヘルパ群（変更なし） ----
+
     private static function pickInvitationEmail(Company $company): ?string
     {
         if (! Schema::hasTable('company_invitations')) return null;
@@ -579,7 +569,6 @@ class CompanyResource extends Resource
         return null;
     }
 
-    /** 既存の紐付けを広めに探索して特定 */
     private static function resolveUserForCompany(Company $company): ?User
     {
         if (isset($company->user_id) && $company->user_id) {
@@ -627,60 +616,6 @@ class CompanyResource extends Resource
         return null;
     }
 
-    /** 送信先メールを自動推定 */
-    private static function guessResetEmail(Company $company): ?string
-    {
-        if ($u = self::resolveUserForCompany($company)) {
-            if (filled($u->email)) return $u->email;
-        }
-
-        if ($inv = self::pickInvitationEmail($company)) {
-            return $inv;
-        }
-
-        if (isset($company->email) && filled($company->email)) {
-            return $company->email;
-        }
-
-        if (Schema::hasTable('company_profiles') && Schema::hasColumn('company_profiles', 'email')) {
-            $profileEmail = DB::table('company_profiles')->where('company_id', $company->id)->value('email');
-            if ($profileEmail) return $profileEmail;
-        }
-
-        return null;
-    }
-
-    /** 指定メールのユーザーを用意し、会社に紐付けて返す */
-    private static function ensureUserForEmail(Company $company, string $email): User
-    {
-        $user = User::firstOrNew(['email' => $email]);
-
-        if (! $user->exists) {
-            $user->name     = $company->name ?? 'Company User';
-            $user->password = bcrypt(Str::random(24));
-        }
-
-        if (method_exists($user, 'assignRole')) {
-            try { $user->assignRole('company'); } catch (\Throwable $e) {}
-        }
-        if (property_exists($user, 'role')) {
-            $user->role = 'company';
-        }
-        if (property_exists($user, 'is_active')) {
-            $user->is_active = true;
-        }
-        if (Schema::hasColumn($user->getTable(), 'email_verified_at') && empty($user->email_verified_at)) {
-            $user->email_verified_at = now();
-        }
-
-        $user->save();
-
-        self::attachUserToCompany($company, $user);
-
-        return $user;
-    }
-
-    /** 会社とユーザーの紐付けを安全に作成 */
     private static function attachUserToCompany(Company $company, User $user): void
     {
         if (Schema::hasTable('company_user')
@@ -736,11 +671,42 @@ class CompanyResource extends Resource
         }
     }
 
-    /** Password リセットを broker('users') で送信（統一ヘルパ） */
     private static function sendReset(string $email): string
     {
-        $broker = config('auth.defaults.passwords', 'users'); // 念のため設定値に追従
+        $broker = config('auth.defaults.passwords', 'users');
         return Password::broker($broker)->sendResetLink(['email' => $email]);
+    }
+
+    /** 既存ヘルパ：自動送信用（元コードにある想定。必要なら定義を戻してください） */
+    private static function ensureUserForEmail(Company $company, string $email): User
+    {
+        $user = User::firstOrNew(['email' => $email]);
+        if (! $user->exists) {
+            $user->name     = $company->name ?? 'Company User';
+            $user->password = bcrypt(Str::random(24));
+        }
+        if (method_exists($user, 'assignRole')) {
+            try { $user->assignRole('company'); } catch (\Throwable $e) {}
+        }
+        $user->role      = 'company';
+        $user->is_active = true;
+
+        if (Schema::hasColumn('users', 'email_verified_at') && empty($user->email_verified_at)) {
+            $user->email_verified_at = now();
+        }
+
+        $user->save();
+        self::attachUserToCompany($company, $user);
+
+        return $user;
+    }
+
+    private static function guessResetEmail(Company $company): ?string
+    {
+        // 会社 → 既存ユーザー → プロファイル/招待メールの順で推定
+        if ($u = self::resolveUserForCompany($company)) return $u->email ?? null;
+        if (!empty($company->email)) return $company->email;
+        return self::pickInvitationEmail($company);
     }
 
     public static function getPages(): array

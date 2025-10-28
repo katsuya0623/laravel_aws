@@ -5,140 +5,107 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Illuminate\Contracts\Auth\MustVerifyEmail; // ★ メール確認を必須化
-// use Laravel\Sanctum\HasApiTokens; // APIトークンが必要なら有効化
+use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Auth\Notifications\VerifyEmail;
 
-// ★ Filament 用
+// Filament
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 
-// ★ 追加：プロフィール自動作成で使用
+// Relations
 use App\Models\Profile;
-
-// （任意）メール日本語化通知
-// use App\Notifications\VerifyEmailJa;
-use App\Notifications\ResetPasswordJa; // ★ 追加：パスワード再設定メール日本語版
 
 class User extends Authenticatable implements FilamentUser, MustVerifyEmail
 {
     use HasFactory, Notifiable;
-    // use HasApiTokens;
 
-    /**
-     * まとめて代入可能な属性
-     */
     protected $fillable = [
         'name',
         'email',
         'password',
-        'role',   // ← 管理人が割り振り時に使う想定
+        'role',
     ];
 
-    /**
-     * 配列に隠す属性
-     */
     protected $hidden = [
         'password',
         'remember_token',
     ];
 
-    /**
-     * キャスト
-     */
     protected $casts = [
-        'email_verified_at' => 'datetime', // ← これがあればOK
-        'password'          => 'hashed',   // ← 保存時に自動でハッシュ
-        // 'is_active' => 'boolean',
+        'email_verified_at' => 'datetime',
+        'password'          => 'hashed',
     ];
 
-    /**
-     * ★ ユーザー作成時に必ず空のプロフィールを作成
-     *   冪等にしてあるので再実行しても安全
-     */
     protected static function booted(): void
     {
         static::created(function (User $user) {
             if (! $user->profile()->exists()) {
-                $user->profile()->create([]); // 空でOK（編集画面で埋める）
+                $user->profile()->create([]);
             }
         });
     }
 
-    /* ========================
-       リレーション
-       ======================== */
-
-    /** プロフィール（1:1） */
+    // ===== Relations =====
     public function profile()
     {
         return $this->hasOne(Profile::class);
     }
 
-    /** お気に入り求人（多対多） pivot: favorites(user_id, job_id) */
     public function favorites()
     {
         return $this->belongsToMany(\App\Models\Job::class, 'favorites')->withTimestamps();
     }
 
-    /** 会社（多対多）：pivot company_user(company_profile_id, user_id) */
     public function companyProfiles()
     {
         return $this->belongsToMany(\App\Models\CompanyProfile::class, 'company_user')
-                    ->withTimestamps();
+            ->withTimestamps();
     }
 
-    /** 代表担当として単一紐づけ（互換用）：company_profiles.user_id */
     public function primaryCompanyProfile()
     {
         return $this->hasOne(\App\Models\CompanyProfile::class, 'user_id');
     }
 
-    /* ========================
-       便利メソッド / スコープ
-       ======================== */
+    public function companies()
+    {
+        return $this->belongsToMany(\App\Models\Company::class, 'company_user', 'user_id', 'company_id')
+            ->withTimestamps();
+    }
 
+    // ===== Roles / Scopes =====
     public function isAdmin(): bool   { return ($this->role ?? null) === 'admin'; }
     public function isCompany(): bool { return ($this->role ?? null) === 'company'; }
     public function isEnduser(): bool { return ($this->role ?? null) === 'enduser' || ($this->role ?? null) === null; }
 
-    public function scopeAdmins($q)   { return $q->where('role', 'admin'); }
-    public function scopeCompanies($q){ return $q->where('role', 'company'); }
-    public function scopeEndusers($q) { return $q->where(function($qq){
-        $qq->whereNull('role')->orWhere('role','enduser');
-    }); }
+    public function scopeAdmins($q)    { return $q->where('role', 'admin'); }
+    public function scopeCompanies($q) { return $q->where('role', 'company'); }
+    public function scopeEndusers($q)
+    {
+        return $q->where(function($qq){
+            $qq->whereNull('role')->orWhere('role','enduser');
+        });
+    }
 
-    /* ========================
-       Filament パネル入場制御
-       ======================== */
+    // ===== Filament Panel Gate =====
     public function canAccessPanel(Panel $panel): bool
     {
-        // /admin パネルには admin のみ入場許可
         return $panel->getId() === 'admin' && $this->isAdmin();
     }
 
-    /* ========================
-       メール通知の日本語化
-       ======================== */
-
-    // （任意）メール確認の日本語化を使う場合
-    /*
+    // ===== Notifications =====
+    /** メール認証通知はエンドユーザーにのみ送る */
     public function sendEmailVerificationNotification(): void
     {
-        $this->notify(new VerifyEmailJa);
+        if ($this->isEnduser()) {
+            $this->notify(new VerifyEmail);
+        }
     }
-    */
 
-    // ★ パスワード再設定メールを日本語通知に差し替え
+    /** パスワードリセット通知（必要なら日本語版に差し替え可） */
     public function sendPasswordResetNotification($token): void
     {
-        $this->notify(new ResetPasswordJa($token));
-    }
-
-    // 会社（多対多）：pivot company_user(company_id, user_id) 用
-    public function companies()
-    {
-        // 第3, 第4引数でキー名を明示（user_id, company_id）
-        return $this->belongsToMany(\App\Models\Company::class, 'company_user', 'user_id', 'company_id')
-                    ->withTimestamps();
+        // $this->notify(new \App\Notifications\ResetPasswordJa($token));
+        $this->notify(new \Illuminate\Auth\Notifications\ResetPassword($token));
     }
 }

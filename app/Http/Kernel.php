@@ -27,13 +27,16 @@ class Kernel extends HttpKernel
             \App\Http\Middleware\EncryptCookies::class,
             \Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
             \Illuminate\Session\Middleware\StartSession::class,
-            // \Illuminate\Session\Middleware\AuthenticateSession::class, // 必要なら有効化
+            // \Illuminate\Session\Middleware\AuthenticateSession::class,
             \Illuminate\View\Middleware\ShareErrorsFromSession::class,
             \App\Http\Middleware\VerifyCsrfToken::class,
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
 
-            // ★ ここに追記！
+            // ✅ Role共有よりも後に
             \App\Http\Middleware\ShareResolvedRole::class,
+
+            // ✅ これを一番最後に置くのが安全
+            \App\Http\Middleware\EnsureCompanyProfileCompleted::class,
         ],
 
         'api' => [

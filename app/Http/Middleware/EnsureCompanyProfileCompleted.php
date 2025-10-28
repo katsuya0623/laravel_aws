@@ -7,111 +7,146 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use App\Models\CompanyProfile;
 
-/**
- * 企業ユーザーで、企業情報が未完了の間は
- * 強制的にオンボーディング（初回入力/編集）へ誘導する。
- *
- * 適用対象：
- * - ログイン済み かつ 「company」ロールのユーザーのみ
- *
- * 判定：
- * - CompanyProfile::is_completed === true
- *   もしくは
- * - CompanyProfile::passesCompletionValidation() が true
- */
 class EnsureCompanyProfileCompleted
 {
     public function handle(Request $request, Closure $next): Response
     {
-        // 未ログインは対象外
+        // ================================
+        // ① 未ログインならスルー
+        // ================================
         if (!Auth::check()) {
             return $next($request);
         }
 
         $user = Auth::user();
 
-        // ===== 企業ユーザー以外は対象外（企業だけに適用） =====
+        // ================================
+        // ② メール未認証ユーザーはスルー（←追加）
+        // ================================
+        if (is_null($user->email_verified_at)) {
+            // 認証フロー中（verification.noticeなど）をブロックしない
+            return $next($request);
+        }
+
+        // ================================
+        // ③ エンドユーザー／管理者は完全スルー
+        // ================================
+        if (($user->role ?? null) === 'enduser' || ($user->role ?? null) === null) {
+            return $next($request);
+        }
+        if (method_exists($user, 'isAdmin') && $user->isAdmin()) {
+            return $next($request);
+        }
+
+        // ================================
+        // ④ 企業ユーザー判定
+        // ================================
         $isCompany = false;
 
-        // 1) hasRole('company') を持っていればそれで判定
+        // hasRole() が存在すれば優先
         if (method_exists($user, 'hasRole')) {
             $isCompany = $user->hasRole('company');
         }
 
-        // 2) RoleResolver があればそれでも判定（fallback）
+        // RoleResolver 経由の判定（例外は無視）
         if (!$isCompany && class_exists(\App\Support\RoleResolver::class)) {
             try {
-                $role = \App\Support\RoleResolver::resolve($user);
-                $isCompany = ($role === 'company');
-            } catch (\Throwable $e) {
-                // だまって続行
-            }
+                $isCompany = (\App\Support\RoleResolver::resolve($user) === 'company');
+            } catch (\Throwable $e) {}
         }
 
+        // 企業ユーザー以外はスルー
         if (!$isCompany) {
-            return $next($request); // ← 企業以外は素通し
+            return $next($request);
         }
 
-        // ===== 静的アセット類は除外 =====
+        // ================================
+        // ⑤ 静的アセット除外
+        // ================================
         $path = ltrim($request->path(), '/');
         if (preg_match('#^(storage|assets|build|vendor|images|img|css|js)/#', $path)) {
             return $next($request);
         }
 
-        // ===== 例外ルート（オンボーディング/編集/認証系）は除外 =====
+        // ================================
+        // ⑥ ホワイトリスト除外
+        // ================================
         $whitelist = [
-            // あなたの実ルート名
-            'onboarding.company.edit',
-            'onboarding.company.update',
-            'user.company.edit',
-            'user.company.update',
-
-            // 将来 first 画面を分けた場合のための保険（無ければ無視されるだけ）
-            'company.profile.first',
-            'company.profile.first.store',
-
-            // 認証・検証周辺
-            'login',
-            'logout',
-            'verification.notice',
-            'verification.verify',
-            'verification.send',
-            'password.request',
-            'password.email',
-            'password.confirm',
-            'password.update',
+            'onboarding.company.edit', 'onboarding.company.update',
+            'user.company.edit', 'user.company.update',
+            'company.profile.first', 'company.profile.first.store',
+            'login', 'logout',
+            'register', 'register.store',
+            'verification.notice', 'verification.verify', 'verification.send',
+            'password.request', 'password.email', 'password.confirm', 'password.update',
         ];
+
         $current = Route::currentRouteName();
         if ($current && in_array($current, $whitelist, true)) {
             return $next($request);
         }
 
-        // ===== プロフィールの特定（代表 user_id → pivot users の順） =====
-        $profile = CompanyProfile::where('user_id', $user->id)->first();
+        // ================================
+        // ⑦ 会社IDの解決
+        // ================================
+        $uid = $user->id;
+        $companyId = null;
 
-        if (!$profile) {
-            $profile = CompanyProfile::whereHas('users', function ($q) use ($user) {
-                $q->where('users.id', $user->id);
-            })->first();
+        $companyId = CompanyProfile::where('user_id', $uid)
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->value('company_id');
+
+        if (!$companyId && Schema::hasTable('companies') && Schema::hasColumn('companies', 'user_id')) {
+            $companyId = DB::table('companies')->where('user_id', $uid)->value('id');
         }
 
-        // プロフィールが無い（未招待/未作成）場合は通す
-        if (!$profile) {
+        if (!$companyId && Schema::hasTable('company_user')) {
+            $profileId = DB::table('company_user')
+                ->where('user_id', $uid)
+                ->orderByDesc('updated_at')
+                ->orderByDesc('id')
+                ->value('company_profile_id');
+            if ($profileId) {
+                $companyId = DB::table('company_profiles')->where('id', $profileId)->value('company_id');
+            }
+        }
+
+        // ================================
+        // ⑧ プロフィール完了チェック
+        // ================================
+        if ($companyId) {
+            $p = CompanyProfile::where('company_id', $companyId)
+                ->orderByDesc('updated_at')
+                ->orderByDesc('id')
+                ->first();
+
+            if ($p && $this->isProfileComplete($p)) {
+                return $next($request);
+            }
+        }
+
+        $pByUser = CompanyProfile::where('user_id', $uid)
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->first();
+
+        if ($pByUser && $this->isProfileComplete($pByUser)) {
             return $next($request);
         }
 
-        // ===== 完了判定 =====
-        $completed =
-            ($profile->is_completed === true) ||
-            (method_exists($profile, 'passesCompletionValidation') && $profile->passesCompletionValidation());
+        // ================================
+        // ⑨ 未完了 → 編集画面へ強制遷移
+        // ================================
+        return $this->redirectToOnboarding();
+    }
 
-        if ($completed) {
-            return $next($request);
-        }
-
-        // ===== リダイレクト先の決定（存在チェックして優先度順に） =====
+    private function redirectToOnboarding()
+    {
         if (Route::has('onboarding.company.edit')) {
             return redirect()->route('onboarding.company.edit')
                 ->with('status', '企業情報の必須入力が完了するまで、先にこちらをご対応ください。');
@@ -120,16 +155,21 @@ class EnsureCompanyProfileCompleted
             return redirect()->route('user.company.edit')
                 ->with('status', '企業情報の必須入力が完了するまで、先にこちらをご対応ください。');
         }
-        if (Route::has('company.profile.first')) {
-            return redirect()->route('company.profile.first')
-                ->with('status', '企業情報の必須入力が完了するまで、先にこちらをご対応ください。');
-        }
-        if (Route::has('company.profile.edit')) {
-            return redirect()->route('company.profile.edit')
-                ->with('status', '企業情報の必須入力が完了するまで、先にこちらをご対応ください。');
-        }
-
-        // 最終フォールバック
         return redirect('/')->with('status', '企業情報の必須入力が未完了です。');
+    }
+
+    private function isProfileComplete(CompanyProfile $p): bool
+    {
+        if ($p->is_completed === true) return true;
+        if (method_exists($p, 'passesCompletionValidation') && $p->passesCompletionValidation()) return true;
+
+        return filled($p->company_name_kana)
+            && filled($p->description)
+            && filled($p->postal_code)
+            && filled($p->prefecture)
+            && filled($p->city)
+            && filled($p->address1)
+            && filled($p->industry)
+            && !is_null($p->employees);
     }
 }

@@ -24,7 +24,7 @@ class RegisteredUserController extends Controller
     /** 登録処理（新規ユーザーのみ検証） */
     public function store(Request $request): RedirectResponse
     {
-        // 軽い正規化（前後スペース除去・メールは小文字化）
+        // 軽い正規化
         $request->merge([
             'name'         => trim((string) $request->name),
             'company_name' => trim((string) $request->company_name),
@@ -33,7 +33,6 @@ class RegisteredUserController extends Controller
 
         $request->validate(
             [
-                // 氏名：日本語/英字/数字/スペース/「ー・－」のみ許可（記号・絵文字NG）
                 'name' => [
                     'required',
                     'string',
@@ -41,21 +40,11 @@ class RegisteredUserController extends Controller
                     'max:20',
                     'regex:/^[\p{L}\p{N}\p{Zs}ー・－]+$/u',
                 ],
-
-                // 企業名：必須・30文字まで
-                'company_name' => [
-                    'required',
-                    'string',
-                    'max:30',
-                ],
-
-                // メール：ユニーク & 小文字化
+                'company_name' => ['required', 'string', 'max:30'],
                 'email' => [
                     'required', 'string', 'lowercase', 'email', 'max:255',
                     Rule::unique(User::class, 'email'),
                 ],
-
-                // パスワード：8文字以上 + 英大文字/小文字（数字・記号は任意）＋漏洩チェック
                 'password' => [
                     'required',
                     'confirmed',
@@ -64,7 +53,6 @@ class RegisteredUserController extends Controller
                         ->mixedCase()
                         ->uncompromised(),
                 ],
-                // 'terms' => ['accepted'], // 規約同意が必要ならコメント解除
             ],
             [
                 'name.regex' => '氏名に記号や絵文字は使用できません。',
@@ -72,19 +60,43 @@ class RegisteredUserController extends Controller
             ]
         );
 
+        // ★ role 固定：エンドユーザー
         $user = User::create([
             'name'         => (string) $request->name,
             'email'        => (string) $request->email,
             'password'     => Hash::make((string) $request->password),
-            'role'         => 'enduser', // エンドユーザー固定
-            // ※ users テーブルに company_name カラム（string(30)）が必要
+            'role'         => 'enduser',
             'company_name' => (string) $request->company_name,
         ]);
 
-        event(new Registered($user));
-        Auth::login($user);
+        /**
+         * ==========================================================
+         * ✅ メール認証フロー
+         * ==========================================================
+         */
+        if ($user->isEnduser()) {
+            // 1. イベント発火（VerifyEmail 通知送信）
+            event(new Registered($user));
 
-        // 直前の intended があればそこへ、なければトップへ
+            // 2. ログイン状態にする
+            Auth::login($user);
+
+            // 3. メール未認証なら確実に verification.notice に飛ばす
+            if (is_null($user->email_verified_at)) {
+                return redirect()->route('verification.notice');
+            }
+
+            // （認証済なら通常通り）
+            return redirect()->intended(route('home', absolute: false));
+        }
+
+        /**
+         * ==========================================================
+         * ✅ 企業・管理者登録（後日拡張用）
+         * ==========================================================
+         */
+        $user->forceFill(['email_verified_at' => now()])->save();
+        Auth::login($user);
         return redirect()->intended(route('home', absolute: false));
     }
 }

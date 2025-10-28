@@ -15,10 +15,7 @@ use Illuminate\Support\Facades\Route;
 
 class InviteAcceptController extends Controller
 {
-    /**
-     * 受諾フォーム表示（GET /invites/accept/{token}）
-     * ルート名: invites.accept
-     */
+    /** 受諾フォーム表示 */
     public function show(string $token)
     {
         if (! Schema::hasTable('company_invitations')) {
@@ -41,7 +38,7 @@ class InviteAcceptController extends Controller
         $companyName = null;
         if (property_exists($inv, 'company_id') && $inv->company_id) {
             if ($company = Company::find($inv->company_id)) {
-                $companyName = $company->name;
+                $companyName = $company->name ?? $company->company_name ?? null;
             }
         }
         if (! $companyName && property_exists($inv, 'company_name') && ! empty($inv->company_name)) {
@@ -55,15 +52,7 @@ class InviteAcceptController extends Controller
         ]);
     }
 
-    /**
-     * 受諾処理（POST /invites/accept/{token}）
-     * ルート名: invites.accept.post
-     * - パスワード設定
-     * - ユーザー作成/取得
-     * - 会社ロール強制付与＆確実な自動紐付け
-     * - 招待ステータス更新
-     * - そのままログイン→会社プロフィール編集へ
-     */
+    /** 受諾処理 */
     public function accept(Request $request, string $token): RedirectResponse
     {
         $data = $request->validate([
@@ -107,7 +96,7 @@ class InviteAcceptController extends Controller
             // 1) ユーザー作成/取得
             $user = User::firstOrNew(['email' => $email]);
             if (! $user->exists) {
-                $user->name = $company->name ?? 'Company User';
+                $user->name = ($company->name ?? $company->company_name ?? 'Company User');
             }
             $user->password = Hash::make($data['password']);
 
@@ -116,10 +105,15 @@ class InviteAcceptController extends Controller
                 $user->email_verified_at = now();
             }
 
-            // 3) 会社ロールを**無条件に上書き**（Spatieあれば同期）
+            // 3) 会社ロール付与
             $user->role = 'company';
             if (property_exists($user, 'is_active')) {
                 $user->is_active = true;
+            }
+
+            // ★ company_id を必ず付与（あれば）
+            if (Schema::hasColumn('users','company_id')) {
+                $user->company_id = $company->id;
             }
             $user->save();
 
@@ -127,20 +121,43 @@ class InviteAcceptController extends Controller
                 try { $user->syncRoles(['company']); } catch (\Throwable $e) {}
             }
 
-            // 4) 会社へ **確実に** 紐付け
+            // 4) 会社へ確実に紐付け（pivot等）
             $this->attachUserToCompany($company, $user);
 
-            // 5) CompanyProfile を用意（未完了フラグで）
-            if (Schema::hasTable('company_profiles') && Schema::hasColumn('company_profiles','user_id')) {
-                DB::table('company_profiles')->updateOrInsert(
-                    ['user_id' => $user->id],
-                    [
-                        'company_name' => $company->name,
-                        'is_completed' => false,
-                        'created_at'   => now(),
-                        'updated_at'   => now(),
-                    ]
-                );
+            // 5) CompanyProfile を「存在するカラムだけ」で upsert（company_id 優先）
+            if (Schema::hasTable('company_profiles')) {
+                $cols = Schema::getColumnListing('company_profiles');
+
+                // upsert のキー
+                $key = [];
+                if (in_array('company_id', $cols, true)) {
+                    $key['company_id'] = $company->id;
+                } elseif (in_array('user_id', $cols, true)) {
+                    $key['user_id'] = $user->id;
+                }
+
+                if (!empty($key)) {
+                    $payload = [];
+                    // 名称カラム
+                    if (in_array('company_name', $cols, true)) {
+                        $payload['company_name'] = ($company->name ?? $company->company_name ?? null);
+                    } elseif (in_array('name', $cols, true)) {
+                        $payload['name'] = ($company->name ?? $company->company_name ?? null);
+                    }
+                    // 完了フラグ（存在する場合のみ）
+                    if (in_array('is_completed', $cols, true)) {
+                        $payload['is_completed'] = false;
+                    }
+                    // タイムスタンプ（存在する場合のみ）
+                    if (in_array('created_at', $cols, true)) {
+                        $payload['created_at'] = now();
+                    }
+                    if (in_array('updated_at', $cols, true)) {
+                        $payload['updated_at'] = now();
+                    }
+
+                    DB::table('company_profiles')->updateOrInsert($key, $payload);
+                }
             }
 
             // 6) 招待を accepted に
@@ -160,7 +177,7 @@ class InviteAcceptController extends Controller
             ]);
         });
 
-        // 8) 会社情報入力へ強制遷移（/onboarding/company を優先）
+        // 8) 会社情報入力へ
         $target = Route::has('onboarding.company.edit')
             ? route('onboarding.company.edit')
             : url('/onboarding/company');
@@ -227,21 +244,28 @@ class InviteAcceptController extends Controller
 
             $profileId = null;
             if (Schema::hasTable('company_profiles')) {
-                if (Schema::hasColumn('company_profiles','company_id')) {
+                $cols = Schema::getColumnListing('company_profiles');
+
+                // 既存レコードを company_id / user_id の順で探索
+                if (in_array('company_id', $cols, true)) {
                     $profileId = DB::table('company_profiles')->where('company_id', $company->id)->value('id');
                 }
-                if (! $profileId && Schema::hasColumn('company_profiles','user_id')) {
+                if (! $profileId && in_array('user_id', $cols, true)) {
                     $profileId = DB::table('company_profiles')->where('user_id', $user->id)->value('id');
                 }
-                if (! $profileId && Schema::hasColumn('company_profiles','user_id')) {
-                    // 必要最小限で新規作成
-                    $profileId = DB::table('company_profiles')->insertGetId([
-                        'user_id'      => $user->id,
-                        'company_name' => $company->name,
-                        'is_completed' => false,
-                        'created_at'   => now(),
-                        'updated_at'   => now(),
-                    ]);
+
+                // 無ければ「存在するカラムだけ」で最小作成
+                if (! $profileId) {
+                    $payload = [];
+                    if (in_array('user_id', $cols, true))      $payload['user_id'] = $user->id;
+                    if (in_array('company_id', $cols, true))   $payload['company_id'] = $company->id;
+                    if (in_array('company_name', $cols, true)) $payload['company_name'] = ($company->name ?? $company->company_name ?? null);
+                    elseif (in_array('name', $cols, true))     $payload['name'] = ($company->name ?? $company->company_name ?? null);
+                    if (in_array('is_completed', $cols, true)) $payload['is_completed'] = false;
+                    if (in_array('created_at', $cols, true))   $payload['created_at'] = now();
+                    if (in_array('updated_at', $cols, true))   $payload['updated_at'] = now();
+
+                    $profileId = DB::table('company_profiles')->insertGetId($payload);
                 }
             }
 

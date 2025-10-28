@@ -27,29 +27,29 @@ class FrontJobController extends Controller
         // ★ 企業プロフィールが完了済みの企業のみ表示（スキーマに応じて安全にJOIN）
         $jobs = $this->joinCompletedCompanyProfile(Job::query()->with('company'), $table);
 
-        // キーワード検索
+        // ▼ キーワード検索（JOIN後は必ずテーブル名で修飾）
         if ($q !== '') {
             foreach (preg_split('/\s+/u', $q, -1, PREG_SPLIT_NO_EMPTY) as $kw) {
                 $jobs->where(function ($qq) use ($kw, $table) {
                     $like = "%{$kw}%";
-                    $qq->where('title', 'like', $like)
-                       ->orWhere('description', 'like', $like)
-                       ->orWhere('location', 'like', $like)
-                       ->orWhere('tags', 'like', $like);
+                    $qq->where("$table.title", 'like', $like)
+                       ->orWhere("$table.description", 'like', $like)
+                       ->orWhere("$table.location", 'like', $like)
+                       ->orWhere("$table.tags", 'like', $like);
 
                     if (Schema::hasColumn($table, 'company_name')) {
-                        $qq->orWhere('company_name', 'like', $like);
+                        $qq->orWhere("$table.company_name", 'like', $like);
                     }
                 });
             }
         }
 
-        // ステータス絞り込み
+        // ▼ ステータス絞り込み（曖昧カラム回避のため修飾）
         $jobs->when(in_array($status, ['draft', 'published'], true), function ($qb) use ($status, $table) {
             if (Schema::hasColumn($table, 'status')) {
-                $qb->where('status', $status);
+                $qb->where("$table.status", $status);
             } elseif (Schema::hasColumn($table, 'is_published')) {
-                $qb->where('is_published', $status === 'published' ? 1 : 0);
+                $qb->where("$table.is_published", $status === 'published' ? 1 : 0);
             }
         });
 
@@ -139,7 +139,7 @@ class FrontJobController extends Controller
             'title'           => $data['title'],
             'description'     => $data['body'],
             'slug'            => $slug,
-            'user_id'         => $user->id, // カラムが無ければ後段で弾かれるので安全
+            'user_id'         => $user->id, // カラムが無ければ後段で弾かれる
             'company_id'      => (int) $data['company_id'],
             'company_name'    => $data['company_name']    ?? null,
             'location'        => $data['location']        ?? null,
@@ -440,44 +440,47 @@ class FrontJobController extends Controller
      * ======================================================= */
     private function joinCompletedCompanyProfile($qb, string $jobTable)
     {
-        if (! Schema::hasTable('company_profiles')) {
+        $cpTbl = 'company_profiles';
+
+        // profiles テーブルが無ければフィルタせず返す
+        if (! Schema::hasTable($cpTbl)) {
             return $qb->select("$jobTable.*");
         }
 
+        $hasCompleted = Schema::hasColumn($cpTbl, 'is_completed');
         $companyTable = (new Company)->getTable();
 
-        // jobs/recruit_jobs に user_id がある場合
-        if (Schema::hasColumn($jobTable, 'user_id')) {
-            return $qb->join('company_profiles as cp', "cp.user_id", '=', "$jobTable.user_id")
-                      ->where('cp.is_completed', true)
-                      ->select("$jobTable.*");
+        // 最優先: job に company_id があり、profiles にも company_id がある
+        if (Schema::hasColumn($jobTable, 'company_id') && Schema::hasColumn($cpTbl, 'company_id')) {
+            $qb = $qb->leftJoin("$cpTbl as cp", "cp.company_id", "=", "$jobTable.company_id");
         }
-
-        // jobs/recruit_jobs に company_id がある場合は companies 経由でオーナー user_id を辿る
-        if (Schema::hasColumn($jobTable, 'company_id') && Schema::hasTable($companyTable)) {
-            $ownerCol = null;
-            if (Schema::hasColumn($companyTable, 'user_id')) {
-                $ownerCol = 'user_id';
-            } elseif (Schema::hasColumn($companyTable, 'owner_user_id')) {
-                $ownerCol = 'owner_user_id';
-            }
+        // 次点: job に user_id がある → profiles.user_id と突合
+        elseif (Schema::hasColumn($jobTable, 'user_id')) {
+            $qb = $qb->leftJoin("$cpTbl as cp", "cp.user_id", "=", "$jobTable.user_id");
+        }
+        // 代替: job.company_id → companies 経由で owner を辿る
+        elseif (Schema::hasColumn($jobTable, 'company_id') && Schema::hasTable($companyTable)) {
+            $ownerCol = Schema::hasColumn($companyTable, 'user_id')
+                ? 'user_id'
+                : (Schema::hasColumn($companyTable, 'owner_user_id') ? 'owner_user_id' : null);
 
             if ($ownerCol) {
-                return $qb->join("$companyTable as c", "c.id", '=', "$jobTable.company_id")
-                          ->join('company_profiles as cp', "cp.user_id", '=', "c.$ownerCol")
-                          ->where('cp.is_completed', true)
-                          ->select("$jobTable.*");
+                $qb = $qb->leftJoin("$companyTable as c", "c.id", "=", "$jobTable.company_id")
+                         ->leftJoin("$cpTbl as cp", "cp.user_id", "=", "c.$ownerCol");
+            } else {
+                // companies にオーナー列が無いなら諦める
+                return $qb->select("$jobTable.*");
             }
-
-            // 最終手段: company_profiles に company_id があればそれで突合
-            if (Schema::hasColumn('company_profiles', 'company_id')) {
-                return $qb->join('company_profiles as cp', 'cp.company_id', '=', "$jobTable.company_id")
-                          ->where('cp.is_completed', true)
-                          ->select("$jobTable.*");
-            }
+        } else {
+            // 突合キーが無い場合は諦める
+            return $qb->select("$jobTable.*");
         }
 
-        // どうしても突合できない場合はフィルタを諦めて落ちないようにする
+        // ★ 列があるときだけ完了フラグで絞る（無ければ絞らない＝落ちない）
+        if ($hasCompleted) {
+            $qb->where('cp.is_completed', 1);
+        }
+
         return $qb->select("$jobTable.*");
     }
 }

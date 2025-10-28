@@ -71,15 +71,18 @@ Route::get('/posts/{slugOrId}', [FrontPostController::class, 'show'])->name('fro
 
 // ===== Company profile (企業ユーザーのみ) =====
 Route::middleware(['auth:web', 'role:company'])->group(function () {
-    Route::get('/company/edit',    [CompanyProfileController::class, 'edit'])->name('user.company.edit');
-    Route::post('/company/update', [CompanyProfileController::class, 'update'])->name('user.company.update');
+    Route::get('/company/edit', [CompanyProfileController::class, 'edit'])->name('user.company.edit');
+
+    // ★ PATCH も受ける
+    Route::match(['POST', 'PATCH'], '/company/update', [CompanyProfileController::class, 'update'])
+        ->name('user.company.update');
 });
 
 // ===== Legacy redirects (301) =====
 Route::permanentRedirect('/company/company', '/company');
-Route::permanentRedirect('/jobs/jobs',       '/jobs');
-Route::permanentRedirect('/companys',        '/company');
-Route::permanentRedirect('/companies',       '/company');
+Route::permanentRedirect('/jobs/jobs', '/jobs');
+Route::permanentRedirect('/companys', '/company');
+Route::permanentRedirect('/companies', '/company');
 
 // 旧 /jobs/{slugOrId} → 新 /recruit_jobs/{slugOrId}
 Route::get('/jobs/{slugOrId}', fn(string $slugOrId) => redirect("/recruit_jobs/{$slugOrId}", 301))
@@ -118,14 +121,14 @@ Route::prefix('recruit_jobs')->group(function () {
 
     // 企業ユーザー専用（作成・更新系）→ プロフィール未完了なら強制オンボーディング
     Route::middleware(['auth:web', 'role:company', EnsureCompanyProfileCompleted::class])->group(function () {
-        Route::get('/create',       [FrontJobController::class, 'create'])->name('front.jobs.create');
-        Route::post('/',            [FrontJobController::class, 'store'])->name('front.jobs.store');
+        Route::get('/create', [FrontJobController::class, 'create'])->name('front.jobs.create');
+        Route::post('/', [FrontJobController::class, 'store'])->name('front.jobs.store');
 
-        Route::get('/{job}/edit',   [FrontJobController::class, 'edit'])
+        Route::get('/{job}/edit', [FrontJobController::class, 'edit'])
             ->whereNumber('job')->name('front.jobs.edit');
-        Route::patch('/{job}',      [FrontJobController::class, 'update'])
+        Route::patch('/{job}', [FrontJobController::class, 'update'])
             ->whereNumber('job')->name('front.jobs.update');
-        Route::delete('/{job}',     [FrontJobController::class, 'destroy'])
+        Route::delete('/{job}', [FrontJobController::class, 'destroy'])
             ->whereNumber('job')->name('front.jobs.destroy');
     });
 
@@ -158,8 +161,8 @@ Route::prefix('recruit_jobs')->group(function () {
 
     // お気に入り（エンドユーザー専用）
     Route::middleware(['auth:web', 'role:enduser'])->group(function () {
-        Route::post('/{jobId}/favorite',        [FavoriteController::class, 'store'])->whereNumber('jobId')->name('favorites.store');
-        Route::delete('/{jobId}/favorite',      [FavoriteController::class, 'destroy'])->whereNumber('jobId')->name('favorites.destroy');
+        Route::post('/{jobId}/favorite', [FavoriteController::class, 'store'])->whereNumber('jobId')->name('favorites.store');
+        Route::delete('/{jobId}/favorite', [FavoriteController::class, 'destroy'])->whereNumber('jobId')->name('favorites.destroy');
         Route::post('/{jobId}/favorite/toggle', [FavoriteController::class, 'toggle'])->whereNumber('jobId')->name('favorites.toggle');
     });
 
@@ -262,9 +265,9 @@ Route::prefix('admin')->middleware(['auth:admin'])->name('admin.')->group(functi
     Route::post('/preupload', [AdminPostController::class, 'preupload'])->name('preupload');
 
     // 行内操作API
-    Route::post('users/{user}/set-role',                   [UserQuickAssignController::class, 'setRole'])
+    Route::post('users/{user}/set-role', [UserQuickAssignController::class, 'setRole'])
         ->whereNumber('user')->name('users.set_role');
-    Route::post('users/{user}/assign-company',             [UserQuickAssignController::class, 'assignCompany'])
+    Route::post('users/{user}/assign-company', [UserQuickAssignController::class, 'assignCompany'])
         ->whereNumber('user')->name('users.assign_company');
     Route::delete('users/{user}/assign-company/{company}', [UserQuickAssignController::class, 'unassign'])
         ->whereNumber(['user', 'company'])->name('users.unassign_company');
@@ -301,7 +304,7 @@ Route::prefix('admin')->middleware(['auth:admin'])->name('admin.')->group(functi
     })->whereNumber('job')->name('jobs.edit');
 
     // 応募一覧（Blade 版）
-    Route::get('applications',        [ApplicationsController::class, 'index'])->name('applications.index');
+    Route::get('applications', [ApplicationsController::class, 'index'])->name('applications.index');
     Route::get('applications/export', [ApplicationsController::class, 'export'])->name('applications.export');
 
     // ★ 会社×メールでパスワードリセット（ユーザー未作成でも作成→紐付け→送信）
@@ -326,7 +329,10 @@ Route::prefix('admin')->middleware(['auth:admin'])->name('admin.')->group(functi
 /* ===== オンボーディング（強制導線） ===== */
 Route::middleware(['web', 'auth:web'])->group(function () {
     Route::get('/onboarding/company', [CompanyProfileController::class, 'edit'])->name('onboarding.company.edit');
-    Route::post('/onboarding/company', [CompanyProfileController::class, 'update'])->name('onboarding.company.update');
+
+    // ★ PATCH も受ける
+    Route::match(['POST', 'PATCH'], '/onboarding/company', [CompanyProfileController::class, 'update'])
+        ->name('onboarding.company.update');
 });
 
 /* ===== Filament 暫定エイリアス（保険） ===== */
@@ -434,13 +440,13 @@ Route::middleware('auth:web')->put('/password', [PasswordController::class, 'upd
 Route::prefix('invites')->name('invites.')->group(function () {
     // 受諾フォーム表示（署名は使わない）
     Route::get('/accept/{token}', [InviteAcceptController::class, 'show'])
-        ->where('token', '[A-Za-z0-9]{20,}')
+        ->where('token', '[A-Za-z0-9\-]{16,}')  // ← 緩和：ハイフン可・16文字以上
         ->middleware(['throttle:20,1'])
         ->name('accept');
 
     // 受諾の完了（パスワード設定 & 紐付け）
     Route::post('/accept/{token}', [InviteAcceptController::class, 'accept'])
-        ->where('token', '[A-Za-z0-9]{20,}')
+        ->where('token', '[A-Za-z0-9\-]{16,}')
         ->middleware(['throttle:20,1'])
         ->name('accept.post');
 
@@ -454,6 +460,6 @@ Route::get(
     fn($token) =>
     redirect()->route('invites.accept', ['token' => $token])
 )
-    ->where('token', '[A-Za-z0-9]{20,}')
+    ->where('token', '[A-Za-z0-9\-]{16,}')   // ← 同じく緩和
     ->middleware(['guest', 'throttle:20,1'])
     ->name('company.invite.accept');

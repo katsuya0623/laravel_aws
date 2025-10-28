@@ -6,32 +6,58 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Facades\DB;
 use App\Models\Application;
 use App\Models\Job;
 
 class ApplicantController extends Controller
 {
-    /** 応募者一覧（既出） */
+    /** 会社IDを推定（users.company / users.company_id / companies.user_id / company_profiles.user_id） */
+    private function resolveCompanyId($user): ?int
+    {
+        return optional($user->company)->id
+            ?? $user->company_id
+            ?? (Schema::hasTable('companies') ? DB::table('companies')->where('user_id', $user->id)->value('id') : null)
+            ?? (Schema::hasTable('company_profiles') ? DB::table('company_profiles')->where('user_id', $user->id)->value('company_id') : null);
+    }
+
+    /** 応募者一覧 */
     public function index(Request $request)
     {
         $user     = $request->user();
         $appsTbl  = (new Application)->getTable();
         $jobsTbl  = (new Job)->getTable();
 
-        $ownedJobs = Job::query()
-            ->when(Schema::hasColumn($jobsTbl, 'user_id'), fn($q) => $q->where('user_id', $user->id))
-            ->orderByDesc('id')->limit(200)->get(['id','title']);
+        $companyId = $this->resolveCompanyId($user);
+
+        // 自社の求人だけ（company_id 優先、無ければ user_id フォールバック）
+        $ownedJobsQ = Job::query();
+        if ($companyId && Schema::hasColumn($jobsTbl, 'company_id')) {
+            $ownedJobsQ->where($jobsTbl.'.company_id', $companyId);
+        } elseif (Schema::hasColumn($jobsTbl, 'user_id')) {
+            $ownedJobsQ->where($jobsTbl.'.user_id', $user->id);
+        } else {
+            // どちらの列も無い場合は空にする
+            $ownedJobsQ->whereRaw('1=0');
+        }
+        $ownedJobs = $ownedJobsQ->orderByDesc('id')->limit(200)->get(['id','title']);
 
         $jobId   = $request->integer('job_id') ?: null;
         $keyword = trim((string)$request->get('q', ''));
         $status  = $request->get('status');
 
         $query = Application::query()
-            ->with(['job' => fn($q) => $q->select('id','title','slug')])
+            ->with(['job' => fn($q) => $q->select('id','title','slug','company_id','user_id')])
+            ->whereHas('job') // 存在しない job を除外
             ->latest('id');
 
-        if (Schema::hasColumn($appsTbl, 'job_id') && Schema::hasColumn($jobsTbl, 'user_id')) {
+        // 自社求人に紐づく応募だけ
+        if ($companyId && Schema::hasColumn($jobsTbl, 'company_id')) {
+            $query->whereHas('job', fn($q) => $q->where($jobsTbl.'.company_id', $companyId));
+        } elseif (Schema::hasColumn($jobsTbl, 'user_id')) {
             $query->whereHas('job', fn($q) => $q->where($jobsTbl.'.user_id', $user->id));
+        } else {
+            $query->whereRaw('1=0');
         }
 
         if ($jobId && Schema::hasColumn($appsTbl, 'job_id')) {
@@ -39,13 +65,15 @@ class ApplicantController extends Controller
         }
 
         if ($status !== null && Schema::hasColumn($appsTbl, 'status')) {
-            $query->where('status', $status);
+            $query->where($appsTbl.'.status', $status);
         }
 
         if ($keyword !== '') {
             $query->where(function ($qq) use ($keyword, $appsTbl) {
                 foreach (['name','full_name','applicant_name','email','tel','phone'] as $col) {
-                    if (Schema::hasColumn($appsTbl, $col)) $qq->orWhere($col, 'like', "%{$keyword}%");
+                    if (Schema::hasColumn($appsTbl, $col)) {
+                        $qq->orWhere($appsTbl.'.'.$col, 'like', "%{$keyword}%");
+                    }
                 }
             });
         }
@@ -69,19 +97,22 @@ class ApplicantController extends Controller
     /** 応募詳細 */
     public function show(Request $request, Application $application)
     {
-        $user    = $request->user();
-        $appsTbl = (new Application)->getTable();
-        $jobsTbl = (new Job)->getTable();
+        $user     = $request->user();
+        $appsTbl  = (new Application)->getTable();
+        $jobsTbl  = (new Job)->getTable();
+        $companyId = $this->resolveCompanyId($user);
 
-        // アクセス権チェック：このユーザーの求人に紐づく応募か？
-        if (Schema::hasColumn($appsTbl, 'job_id') && Schema::hasColumn($jobsTbl, 'user_id')) {
-            $ok = Job::where('id', $application->job_id)->where('user_id', $user->id)->exists();
-            if (!$ok) throw new ModelNotFoundException(); // 404
+        // アクセス権チェック：自社求人の応募か？
+        $ok = false;
+        if ($companyId && Schema::hasColumn($jobsTbl, 'company_id')) {
+            $ok = Job::where('id', $application->job_id)->where($jobsTbl.'.company_id', $companyId)->exists();
+        } elseif (Schema::hasColumn($jobsTbl, 'user_id')) {
+            $ok = Job::where('id', $application->job_id)->where($jobsTbl.'.user_id', $user->id)->exists();
         }
+        if (!$ok) throw new ModelNotFoundException(); // 404
 
-        $application->loadMissing(['job' => fn($q) => $q->select('id','title','slug')]);
+        $application->loadMissing(['job' => fn($q) => $q->select('id','title','slug','company_id','user_id')]);
 
-        // ステータス候補
         $statusOptions = [];
         if (Schema::hasColumn($appsTbl, 'status')) {
             $statusOptions = [
@@ -98,18 +129,23 @@ class ApplicantController extends Controller
     /** ステータス更新（メモもあれば一緒に） */
     public function updateStatus(Request $request, Application $application)
     {
-        $user    = $request->user();
-        $appsTbl = (new Application)->getTable();
-        $jobsTbl = (new Job)->getTable();
+        $user     = $request->user();
+        $appsTbl  = (new Application)->getTable();
+        $jobsTbl  = (new Job)->getTable();
+        $companyId = $this->resolveCompanyId($user);
 
-        if (Schema::hasColumn($appsTbl, 'job_id') && Schema::hasColumn($jobsTbl, 'user_id')) {
-            $ok = Job::where('id', $application->job_id)->where('user_id', $user->id)->exists();
-            if (!$ok) abort(403);
+        // 権限チェック
+        $ok = false;
+        if ($companyId && Schema::hasColumn($jobsTbl, 'company_id')) {
+            $ok = Job::where('id', $application->job_id)->where($jobsTbl.'.company_id', $companyId)->exists();
+        } elseif (Schema::hasColumn($jobsTbl, 'user_id')) {
+            $ok = Job::where('id', $application->job_id)->where($jobsTbl.'.user_id', $user->id)->exists();
         }
+        if (!$ok) abort(403);
 
         $data = [];
         if (Schema::hasColumn($appsTbl, 'status')) {
-            $data['status'] = $request->string('status')->toString();
+            $data['status'] = (string)$request->string('status');
         }
         if (Schema::hasColumn($appsTbl, 'note') && $request->filled('note')) {
             $data['note'] = (string)$request->get('note');
