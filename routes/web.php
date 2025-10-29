@@ -19,6 +19,8 @@ use App\Http\Controllers\Admin\PostController as AdminPostController;
 use App\Http\Controllers\Admin\ApplicationsController;
 use App\Http\Controllers\Admin\CompanyUserAssignController;
 use App\Http\Controllers\Admin\UserQuickAssignController;
+use App\Http\Controllers\Admin\EndUserProfileController; // ★追加
+
 
 // ★ 招待＆オンボーディング用
 use App\Http\Controllers\Admin\CompanyInvitationController;
@@ -272,6 +274,12 @@ Route::prefix('admin')->middleware(['auth:admin'])->name('admin.')->group(functi
     Route::delete('users/{user}/assign-company/{company}', [UserQuickAssignController::class, 'unassign'])
         ->whereNumber(['user', 'company'])->name('users.unassign_company');
 
+    // ★★★ ここに追加 ↓↓↓ ★★★
+    Route::get('/users/{user}/profile', [EndUserProfileController::class, 'show'])
+        ->whereNumber('user')
+        ->name('users.profile.show');
+    // ★★★ ここまで ★★★
+
     /* Recruit Jobs（Filament に委譲） */
     $recruitSlug = method_exists(RecruitJobResource::class, 'getSlug') ? RecruitJobResource::getSlug() : 'recruit-jobs';
 
@@ -378,8 +386,10 @@ Route::post('/email/verification-notification', function (\Illuminate\Http\Reque
 if (! Route::has('password.reset')) {
     Route::middleware('guest')->group(function () {
         // Breeze コントローラが存在するならそれを使う
-        if (class_exists(\App\Http\Controllers\Auth\PasswordResetLinkController::class)
-            && class_exists(\App\Http\Controllers\Auth\NewPasswordController::class)) {
+        if (
+            class_exists(\App\Http\Controllers\Auth\PasswordResetLinkController::class)
+            && class_exists(\App\Http\Controllers\Auth\NewPasswordController::class)
+        ) {
 
             Route::get('/forgot-password',  [\App\Http\Controllers\Auth\PasswordResetLinkController::class, 'create'])->name('password.request');
             Route::post('/forgot-password', [\App\Http\Controllers\Auth\PasswordResetLinkController::class, 'store'])->name('password.email');
@@ -387,7 +397,6 @@ if (! Route::has('password.reset')) {
             // ★ ResetPassword通知が参照する本命
             Route::get('/reset-password/{token}', [\App\Http\Controllers\Auth\NewPasswordController::class, 'create'])->name('password.reset');
             Route::post('/reset-password',        [\App\Http\Controllers\Auth\NewPasswordController::class, 'store'])->name('password.store');
-
         } else {
             // 最低限：リンク先のプレースホルダ（ビューは用意してください）
             Route::get('/reset-password/{token}', function (string $token) {

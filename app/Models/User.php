@@ -14,6 +14,7 @@ use Filament\Panel;
 
 // Relations
 use App\Models\Profile;
+use App\Models\WorkHistory; // ★ 追加
 
 class User extends Authenticatable implements FilamentUser, MustVerifyEmail
 {
@@ -71,6 +72,13 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
     {
         return $this->belongsToMany(\App\Models\Company::class, 'company_user', 'user_id', 'company_id')
             ->withTimestamps();
+    }
+
+    /** ★ 追加：職歴（閲覧用） */
+    public function workHistories()
+    {
+        return $this->hasMany(WorkHistory::class)
+            ->orderByDesc('start_date'); // 並び順はお好みで
     }
 
     // ===== Roles / Scopes =====

@@ -6,6 +6,10 @@ use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvid
 use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Notifications\Messages\MailMessage;
 
+// ▼ 追加
+use App\Models\WorkHistory;
+use App\Policies\WorkHistoryPolicy;
+
 class AuthServiceProvider extends ServiceProvider
 {
     /**
@@ -14,7 +18,8 @@ class AuthServiceProvider extends ServiceProvider
      * @var array<class-string, class-string>
      */
     protected $policies = [
-        //
+        // ▼ 追加：WorkHistory の閲覧専用ポリシー
+        WorkHistory::class => WorkHistoryPolicy::class,
     ];
 
     /**
