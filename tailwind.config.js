@@ -1,16 +1,18 @@
+// tailwind.config.js
 module.exports = {
   content: [
     './resources/**/*.blade.php',
     './resources/**/*.js',
-    './storage/framework/views/*.php'
+    './storage/framework/views/*.php',
   ],
   theme: {
-    extend: {},
+    extend: {
+      colors: {
+        brand: '#C23A41',         // ← 追加
+        'brand-dark': '#B23339',  // ← hover用（お好み）
+      },
+    },
   },
-  plugins: [
-    require('daisyui'),   // ★ ここ追加！
-  ],
-  daisyui: {
-    themes: ['light', 'dark'], // 好きなテーマ（corporate, retro, synthwave 等も可）
-  },
+  plugins: [require('daisyui')],
+  daisyui: { themes: ['light', 'dark'] },
 }

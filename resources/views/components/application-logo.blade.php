@@ -1,12 +1,8 @@
-@php $src = asset('images/logo.svg'); @endphp
-@if (file_exists(public_path('images/logo.svg')))
-  <img 
-    src="{{ $src }}" 
-    alt="{{ config('app.name','nibi') }}" 
-    class="{{ $attributes->get('class','h-7 w-auto') }}"
-  >
-@else
-  <span class="{{ $attributes->get('class','text-lg font-bold') }}">
-    {{ config('app.name','nibi') }}
+<a href="/" class="flex flex-col items-start leading-tight">
+  <span class="text-[13px] text-gray-500 tracking-widest">
+    リアルな就活、リアルな暮らし。
   </span>
-@endif
+  <span class="text-[26px] font-bold text-[#C23A41] leading-none">
+    ドウソコ
+  </span>
+</a>
