@@ -196,18 +196,17 @@
   $newCompanies = collect();
   try {
       if (class_exists(\App\Models\Company::class)) {
-          $logoCols = ['logo_url','logo','image','image_url','thumbnail','thumbnail_url','eyecatch_url'];
           $newCompanies = \App\Models\Company::query()
-              ->orderByDesc('id')->limit(8)->get()->map(function($c) use ($logoCols, $normalize) {
-                  $logo = null;
-                  foreach ($logoCols as $col) if (!empty($c->{$col})) { $logo = $c->{$col}; break; }
-                  return [
-                      'id'   => $c->id,
-                      'slug' => $c->slug ?? null,
-                      'name' => $c->name ?? '企業名未設定',
-                      'logo' => $normalize($logo),
-                  ];
-              });
+              ->withCompletedProfile()             // プロフィール完了のみ（定義済みスコープ）
+              ->latest('id')
+              ->limit(8)
+              ->get()
+              ->map(fn($c) => [
+                  'id'   => $c->id,
+                  'slug' => $c->slug ?? null,
+                  'name' => $c->name ?? '企業名未設定',
+                  'logo' => $c->logo_url,           // ★ ここがポイント：アクセサをそのまま使う
+              ]);
       }
   } catch (\Throwable $e) {}
 @endphp
@@ -227,13 +226,19 @@
   <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6">
     @foreach($newCompanies as $co)
       @php
-        $coUrl = (\Route::has('front.company.show') && ($co['slug'] ?? $co['id']))
-          ? route('front.company.show', $co['slug'] ?? $co['id'])
+        $coParam = $co['slug'] ?: $co['id'];
+        $coUrl = (\Route::has('front.company.show') && $coParam)
+          ? route('front.company.show', $coParam)
           : '#';
       @endphp
       <a href="{{ $coUrl }}" class="group rounded-2xl bg-white border shadow-sm hover:shadow-md transition p-5 flex items-center justify-center">
-        @if($co['logo'])
-          <img src="{{ $co['logo'] }}" alt="{{ $co['name'] }}" class="max-h-12 w-auto object-contain opacity-90 group-hover:opacity-100 transition">
+        @if(!empty($co['logo']))
+          <img
+            src="{{ $co['logo'] }}"
+            alt="{{ $co['name'] }}"
+            class="max-h-12 w-auto object-contain opacity-90 group-hover:opacity-100 transition"
+            onerror="this.onerror=null;this.src='{{ asset('images/noimage.svg') }}';"
+          >
         @else
           <span class="text-sm text-gray-500">{{ $co['name'] }}</span>
         @endif
@@ -242,6 +247,7 @@
   </div>
 </section>
 @endif
+
 
 {{-- =========================
      新着の求人（横並びカード）

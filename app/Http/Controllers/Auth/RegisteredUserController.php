@@ -21,26 +21,29 @@ class RegisteredUserController extends Controller
         return view('auth.register');
     }
 
-    /** 登録処理（新規ユーザーのみ検証） */
+    /** 登録処理（エンドユーザー想定／company_name は任意に変更） */
     public function store(Request $request): RedirectResponse
     {
         // 軽い正規化
         $request->merge([
-            'name'         => trim((string) $request->name),
-            'company_name' => trim((string) $request->company_name),
-            'email'        => strtolower(trim((string) $request->email)),
+            'name'  => trim((string) $request->name),
+            'email' => strtolower(trim((string) $request->email)),
+            // 'company_name' はフォームに無い想定なので触らない
         ]);
 
-        $request->validate(
+        $validated = $request->validate(
             [
                 'name' => [
                     'required',
                     'string',
                     'min:2',
                     'max:20',
+                    // 日本語・英数・スペース・長音符のみ許可（必要なければ外してOK）
                     'regex:/^[\p{L}\p{N}\p{Zs}ー・－]+$/u',
                 ],
-                'company_name' => ['required', 'string', 'max:30'],
+                // ← ここ！ もともと required だった 'company_name' を削除 or 任意に
+                // 'company_name' => ['nullable','string','max:30'],
+
                 'email' => [
                     'required', 'string', 'lowercase', 'email', 'max:255',
                     Rule::unique(User::class, 'email'),
@@ -48,10 +51,10 @@ class RegisteredUserController extends Controller
                 'password' => [
                     'required',
                     'confirmed',
-                    Password::min(8)
-                        ->letters()
-                        ->mixedCase()
-                        ->uncompromised(),
+                    // 文言に合わせて：数字・記号は任意（必要なら ->numbers(), ->symbols() を足す）
+                    Password::min(8)->letters()->mixedCase(),
+                    // もし「漏洩パスワードの拒否」をしたいなら下を復活
+                    // ->uncompromised(),
                 ],
             ],
             [
@@ -62,41 +65,18 @@ class RegisteredUserController extends Controller
 
         // ★ role 固定：エンドユーザー
         $user = User::create([
-            'name'         => (string) $request->name,
-            'email'        => (string) $request->email,
-            'password'     => Hash::make((string) $request->password),
-            'role'         => 'enduser',
-            'company_name' => (string) $request->company_name,
+            'name'     => (string) $validated['name'],
+            'email'    => (string) $validated['email'],
+            'password' => Hash::make((string) $validated['password']),
+            'role'     => 'enduser',
+            // 'company_name' はフォームに無いのでセットしない
         ]);
 
-        /**
-         * ==========================================================
-         * ✅ メール認証フロー
-         * ==========================================================
-         */
-        if ($user->isEnduser()) {
-            // 1. イベント発火（VerifyEmail 通知送信）
-            event(new Registered($user));
+        // メール認証フロー
+        event(new Registered($user));  // VerifyEmail通知
+        Auth::login($user);            // 先にログイン
 
-            // 2. ログイン状態にする
-            Auth::login($user);
-
-            // 3. メール未認証なら確実に verification.notice に飛ばす
-            if (is_null($user->email_verified_at)) {
-                return redirect()->route('verification.notice');
-            }
-
-            // （認証済なら通常通り）
-            return redirect()->intended(route('home', absolute: false));
-        }
-
-        /**
-         * ==========================================================
-         * ✅ 企業・管理者登録（後日拡張用）
-         * ==========================================================
-         */
-        $user->forceFill(['email_verified_at' => now()])->save();
-        Auth::login($user);
-        return redirect()->intended(route('home', absolute: false));
+        // 未認証なら必ず認証画面へ
+        return redirect()->route('verification.notice');
     }
 }
