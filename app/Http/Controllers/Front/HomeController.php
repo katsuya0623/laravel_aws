@@ -29,11 +29,19 @@ class HomeController extends Controller
         // —— 企業（TOP 表示ぶんだけ事前取得）
         $companiesTop = $this->topCompanies();
 
-        // —— 求人（TOP 表示ぶんだけ）
-        $jobsTop = Job::withoutGlobalScopes()
-            ->select(['id','title','slug'])
+        // —— 求人（TOP 表示ぶんだけ）※会社ロゴ表示のため company を eager load
+        $jobsTop = Job::query()
+            ->withoutGlobalScopes()
+            ->select([
+                'id','title','slug','company_id',
+                // 画像列を持っている環境に合わせて必要なものを並べる
+                'thumbnail_path','image','image_path'
+            ])
+            ->with([
+                'company:id,name,slug,logo_path,logo,thumbnail_path'
+            ])
             ->orderByDesc('id')
-            ->limit(5)
+            ->limit(8)
             ->get();
 
         return view('front.home', compact('latest', 'companiesTop', 'jobsTop'));
@@ -72,7 +80,7 @@ class HomeController extends Controller
                 });
             }
 
-            // ★追記: company_profiles と突合して「完了企業のみ」
+            // company_profiles と突合して「完了企業のみ」
             if ($schema->hasTable('company_profiles')
                 && $schema->hasColumn('company_profiles','is_completed')
                 && $schema->hasColumn('companies','name')) {
@@ -86,7 +94,6 @@ class HomeController extends Controller
                       ->where('cp.is_completed', 1);
                 }
             }
-            // ★追記ここまで
 
             // 使いそうな列だけ選択（存在チェック）
             $cols = [];
