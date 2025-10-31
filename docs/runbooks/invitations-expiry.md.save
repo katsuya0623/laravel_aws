@@ -1,0 +1,8 @@
+# Company Invitation Expiry (招待メール有効期限仕様)
+## 概要
+企業ユーザー招待メールの有効期限設定についての運用ドキュメント。 ---
+## 現行設定（本番）
+- 有効期限：**7日間** - 
+設定ファイル：`app/Http/Controllers/Admin/CompanyInvitationController.php` - 
+対象箇所：
+  ```php 'expires_at' => now()->addDays($expiresDays), $expiresDays = 7;

@@ -447,10 +447,10 @@ Route::middleware('auth:web')->put('/password', [PasswordController::class, 'upd
 
 // ===== 招待受諾フロー =====
 Route::prefix('invites')->name('invites.')->group(function () {
-    // 受諾フォーム表示（署名は使わない）
+    // 受諾フォーム表示（署名 + 期限検証）
     Route::get('/accept/{token}', [InviteAcceptController::class, 'show'])
         ->where('token', '[A-Za-z0-9\-]{16,}')  // ← 緩和：ハイフン可・16文字以上
-        ->middleware(['throttle:20,1'])
+        ->middleware(['signed', 'throttle:20,1'])   // ★追加
         ->name('accept');
 
     // 受諾の完了（パスワード設定 & 紐付け）
@@ -464,11 +464,17 @@ Route::prefix('invites')->name('invites.')->group(function () {
 });
 
 // 短縮リンク：/invite/{token} → 本命ルートへ委譲
-Route::get(
-    '/invite/{token}',
-    fn($token) =>
-    redirect()->route('invites.accept', ['token' => $token])
-)
+Route::get('/invite/{token}', function (string $token) {
+    $inv = \App\Models\CompanyInvitation::where('token', $token)->first();
+    if (! $inv) return redirect()->route('invites.expired');
+    if (optional($inv->expires_at)->isPast()) return redirect()->route('invites.expired');
+    $signed = \Illuminate\Support\Facades\URL::temporarySignedRoute(
+        'invites.accept',
+        $inv->expires_at,
+        ['token' => $inv->token]
+    );
+    return redirect()->to($signed);
+})
     ->where('token', '[A-Za-z0-9\-]{16,}')   // ← 同じく緩和
     ->middleware(['guest', 'throttle:20,1'])
     ->name('company.invite.accept');

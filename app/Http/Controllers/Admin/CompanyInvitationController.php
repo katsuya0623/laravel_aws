@@ -46,23 +46,26 @@ class CompanyInvitationController extends Controller
         ]);
 
         // ③ 招待レコード
-        $expiresDays = (int) config('app.invitation_days', 7);
+        $expiresDays = 7; // ← 表示用に残してOK（メール文言などに使っている想定）
+
         $invitation = CompanyInvitation::create([
             'email'        => $data['email'],
             'company_name' => $data['company_name'],
             'company_id'   => $company->id,
             'token'        => (string) Str::uuid(),
-            'expires_at'   => now()->addDays($expiresDays),
+            'expires_at'   => now()->addDays($expiresDays),  // ← ★ 本番仕様（7日間）
             'status'       => 'pending',
             'invited_by'   => $request->user()?->id,
         ]);
 
+
         // ④ 受諾URL（署名付き）
         $acceptUrl = URL::temporarySignedRoute(
             'invites.accept',
-            $invitation->expires_at,
+            $invitation->expires_at,              // ← ここも DBに入れた expires_at を使う
             ['token' => $invitation->token]
         );
+
 
         // ⑤ 招待メール送信
         Notification::route('mail', $invitation->email)
@@ -83,7 +86,7 @@ class CompanyInvitationController extends Controller
     public function sendResetByEmail(Request $request, Company $company)
     {
         $data = $request->validate([
-            'email' => ['required','email','max:255'],
+            'email' => ['required', 'email', 'max:255'],
         ], [], ['email' => '送信先メールアドレス']);
 
         $email = strtolower(trim($data['email']));
@@ -101,21 +104,26 @@ class CompanyInvitationController extends Controller
             if (property_exists($user, 'is_active')) $user->is_active = true;
             $user->save();
             if (method_exists($user, 'syncRoles')) {
-                try { $user->syncRoles(['company']); } catch (\Throwable $e) {}
+                try {
+                    $user->syncRoles(['company']);
+                } catch (\Throwable $e) {
+                }
             }
 
             // 3) 会社との紐付け
             $linked = false;
-            if (Schema::hasTable('company_user')
-                && Schema::hasColumn('company_user','company_id')
-                && Schema::hasColumn('company_user','user_id')) {
+            if (
+                Schema::hasTable('company_user')
+                && Schema::hasColumn('company_user', 'company_id')
+                && Schema::hasColumn('company_user', 'user_id')
+            ) {
                 DB::table('company_user')->updateOrInsert(
                     ['company_id' => $company->id, 'user_id' => $user->id],
                     ['created_at' => now(), 'updated_at' => now()]
                 );
                 $linked = true;
             }
-            if (! $linked && Schema::hasTable('companies') && Schema::hasColumn('companies','user_id')) {
+            if (! $linked && Schema::hasTable('companies') && Schema::hasColumn('companies', 'user_id')) {
                 DB::table('companies')->where('id', $company->id)->update([
                     'user_id'    => $user->id,
                     'updated_at' => now(),
@@ -130,10 +138,10 @@ class CompanyInvitationController extends Controller
             }
 
             // 4) プロファイル下地（存在しなければ）
-            if (Schema::hasTable('company_profiles') && Schema::hasColumn('company_profiles','user_id')) {
+            if (Schema::hasTable('company_profiles') && Schema::hasColumn('company_profiles', 'user_id')) {
                 DB::table('company_profiles')->updateOrInsert(
                     ['user_id' => $user->id],
-                    ['company_name' => $company->name, 'is_completed' => false, 'created_at'=>now(), 'updated_at'=>now()]
+                    ['company_name' => $company->name, 'is_completed' => false, 'created_at' => now(), 'updated_at' => now()]
                 );
             }
 

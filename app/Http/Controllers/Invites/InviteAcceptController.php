@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Carbon;
 
 class InviteAcceptController extends Controller
 {
@@ -27,11 +28,9 @@ class InviteAcceptController extends Controller
             return redirect()->route('invites.expired');
         }
 
-        if (property_exists($inv, 'expires_at') && ! empty($inv->expires_at)) {
-            if (now()->greaterThan($inv->expires_at)) {
-                return redirect()->route('invites.expired');
-            }
-        }
+      // ▼ 期限切れ & ステータス検証（pending のみ許可）
+        if ($this->isInvitationExpired($inv) || !$this->isInvitationPending($inv)) {
+            return redirect()->route('invites.expired'); }
 
         $email = $this->resolveInvitationEmail($inv);
 
@@ -72,10 +71,9 @@ class InviteAcceptController extends Controller
             return redirect()->route('invites.expired');
         }
 
-        if (property_exists($inv, 'expires_at') && ! empty($inv->expires_at)) {
-            if (now()->greaterThan($inv->expires_at)) {
-                return redirect()->route('invites.expired');
-            }
+        // 期限切れ & ステータス検証（pending のみ許可）
+        if ($this->isInvitationExpired($inv) || !$this->isInvitationPending($inv)) {
+            return redirect()->route('invites.expired');
         }
 
         if (! property_exists($inv, 'company_id') || empty($inv->company_id)) {
@@ -164,6 +162,10 @@ class InviteAcceptController extends Controller
             $update = ['status' => 'accepted'];
             if (Schema::hasColumn('company_invitations', 'accepted_at')) {
                 $update['accepted_at'] = now();
+            }
+           // 二重受諾防止：token クリア（カラムがある場合）
+            if (Schema::hasColumn('company_invitations', 'token')) {
+                $update['token'] = null;
             }
             DB::table('company_invitations')->where('id', $inv->id)->update($update);
 
@@ -307,4 +309,42 @@ class InviteAcceptController extends Controller
             ]);
         }
     }
+     /**
+     * 期限切れ判定（expires_at があれば使う）
+     */
+    private function isInvitationExpired(object $inv): bool
+    {
+        if (property_exists($inv, 'expires_at') && !empty($inv->expires_at)) {
+            $exp = $inv->expires_at instanceof \DateTimeInterface
+                ? $inv->expires_at
+                : \Illuminate\Support\Carbon::parse($inv->expires_at);
+            return now()->greaterThan($exp);
+        }
+        return false; // 期限未設定は期限切れ扱いにしない
+    }
+
+    /**
+     * 受諾可能判定（pending 以外はNG／token欠落やaccepted_atありもNG）
+     */
+    private function isInvitationPending(object $inv): bool
+    {
+        $status = property_exists($inv, 'status') ? strtolower((string) $inv->status) : null;
+        if ($status && $status !== 'pending') {
+            return false;
+        }
+
+        // tokenが空なら二重受諾などとみなしてNG（カラムがある場合のみ）
+        if (\Illuminate\Support\Facades\Schema::hasColumn('company_invitations', 'token') && empty($inv->token)) {
+            return false;
+        }
+
+        // 既に受諾済みならNG（カラムがある場合のみ）
+        if (\Illuminate\Support\Facades\Schema::hasColumn('company_invitations', 'accepted_at') && !empty($inv->accepted_at)) {
+            return false;
+        }
+
+        return true;
+    }
 }
+
+
