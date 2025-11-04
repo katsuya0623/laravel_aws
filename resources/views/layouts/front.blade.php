@@ -3,57 +3,33 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="csrf-token" content="{{ csrf_token() }}"><!-- ★ お気に入りAJAX用 -->
-  <title>@yield('title','Blog')</title>
-  @vite(['resources/css/app.css','resources/js/app.js']) {{-- Breeze/Tailwind想定 --}}
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  @vite(['resources/css/app.css','resources/js/app.js'])
+
+  {{-- 一時ホットフィックス：ヘッダー内の異常スタイルをリセット --}}
+  <style>
+    header a, header nav a {
+      background: transparent !important;
+      display: inline-flex !important;
+      height: auto !important;
+      border-radius: .375rem; /* Tailwind rounded-md 相当 */
+      padding: .5rem .75rem;  /* px-3 py-2 相当 */
+      color: #4b5563;         /* text-gray-600 */
+      text-decoration: none;
+    }
+    header a:hover { color:#111827; background:#f3f4f6; } /* hover */
+    header ul { list-style: none; padding:0; margin:0; }
+    /* もし daisyUI の menu / btn 等が残っていても無効化 */
+    header .menu, header .btn, header .navbar { all: unset; }
+  </style>
 </head>
 <body class="bg-gray-50 text-gray-900">
-  <header class="bg-white border-b">
-    <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-      {{-- ロゴ / ホーム --}}
-      @php
-        $homeUrl = \Illuminate\Support\Facades\Route::has('home')
-          ? route('home')
-          : url('/');
-      @endphp
-      <a href="{{ $homeUrl }}" class="font-bold text-xl">nibi Blog</a>
 
-      {{-- ヘッダーにカテゴリ一覧（存在チェックつき） --}}
-      @php
-        use Illuminate\Support\Facades\Schema;
-        $allCategories = collect();
-        try {
-          if (class_exists(\App\Models\Category::class) && Schema::hasTable('categories')) {
-            $allCategories = \App\Models\Category::orderBy('name')->get();
-          }
-        } catch (\Throwable $e) {
-          $allCategories = collect();
-        }
-
-        // ルート存在チェック（単数: front.category.show）
-        $catRouteExists = \Illuminate\Support\Facades\Route::has('front.category.show');
-      @endphp
-
-      <nav class="hidden md:flex gap-4">
-        @foreach($allCategories as $cat)
-          @if ($catRouteExists)
-            <a class="text-sm hover:underline"
-               href="{{ route('front.category.show', $cat->slug) }}">{{ $cat->name }}</a>
-          @else
-            {{-- ルート未登録時は /category/{slug} にフォールバック --}}
-            <a class="text-sm hover:underline"
-               href="{{ url('/category/'.$cat->slug) }}">{{ $cat->name }}</a>
-          @endif
-        @endforeach
-      </nav>
-    </div>
-  </header>
+  {{-- ★ ここを唯一のヘッダーとして使う。ほかのヘッダー@includeは全部削除！ --}}
+  @include('components.front-header')
 
   <main class="max-w-7xl mx-auto px-4 py-8">
     @yield('content')
   </main>
-
-  {{-- ★ コンポーネント側の @push('scripts') を受け取る（favorite-toggle用） --}}
-  @stack('scripts')
 </body>
 </html>

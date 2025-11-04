@@ -1,118 +1,145 @@
-@extends('layouts.app') {{-- Breezeなら x-app-layout に置換OK --}}
-@section('title','応募者一覧')
+{{-- 応募者一覧（企業側）: Breeze共通ヘッダーに見出しを出す版 --}}
+<x-app-layout>
+  {{-- ページタイトル（ブラウザタブ用） --}}
+  @section('title', '応募者一覧')
 
-@section('content')
-<div class="py-10">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-
-    <div class="mb-6">
-      <h1 class="text-2xl font-bold">応募者一覧</h1>
-      <p class="text-gray-500 text-sm mt-1">あなたの求人に対する応募が表示されます。</p>
+  {{-- 共通ヘッダー帯の中に表示する見出し --}}
+  <x-slot name="header">
+    <div class="flex flex-col gap-1">
+      <h1 class="font-semibold text-xl leading-tight">応募者一覧</h1>
+      <p class="text-sm text-gray-500">あなたの求人に対する応募が表示されます。</p>
     </div>
+  </x-slot>
 
-    {{-- フィルター --}}
-    <form method="GET" class="bg-white border border-gray-200 rounded-xl p-4 mb-6 grid gap-3 sm:grid-cols-3">
-      <div>
-        <label class="block text-xs text-gray-500 mb-1">求人で絞り込み</label>
-        <select name="job_id" class="w-full rounded-md border-gray-300">
-          <option value="">すべて</option>
-          @foreach(($ownedJobs ?? []) as $j)
-            <option value="{{ $j->id }}" @selected((int)($jobId ?? 0) === (int)$j->id)>
-              [#{{ $j->id }}] {{ $j->title ?? '（タイトル未設定）' }}
-            </option>
-          @endforeach
-        </select>
-      </div>
+  <div class="py-8 sm:py-10">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
-      @if(!empty($statusOptions ?? []))
-      <div>
-        <label class="block text-xs text-gray-500 mb-1">ステータス</label>
-        <select name="status" class="w-full rounded-md border-gray-300">
-          @foreach($statusOptions as $val=>$label)
-            <option value="{{ $val }}" @selected((string)($status ?? '') === (string)$val)>{{ $label }}</option>
-          @endforeach
-        </select>
-      </div>
-      @endif
+      {{-- フィルター --}}
+      <form method="GET" class="card bg-base-100 border border-base-200 shadow-sm mb-6">
+        <div class="card-body grid gap-4 sm:grid-cols-3">
+          <div>
+            <label class="label py-0">
+              <span class="label-text text-xs text-base-content/60">求人で絞り込み</span>
+            </label>
+            <select name="job_id" class="select select-bordered w-full">
+              <option value="">すべて</option>
+              @foreach(($ownedJobs ?? []) as $j)
+                <option value="{{ $j->id }}" @selected((int)($jobId ?? 0) === (int)$j->id)>
+                  [#{{ $j->id }}] {{ $j->title ?? '（タイトル未設定）' }}
+                </option>
+              @endforeach
+            </select>
+          </div>
 
-      <div>
-        <label class="block text-xs text-gray-500 mb-1">キーワード（氏名 / メール / 電話）</label>
-        <input type="text" name="q" value="{{ $keyword ?? '' }}" class="w-full rounded-md border-gray-300" placeholder="例）山田 / example@nibi.co.jp">
-      </div>
+          @if(!empty($statusOptions ?? []))
+            <div>
+              <label class="label py-0">
+                <span class="label-text text-xs text-base-content/60">ステータス</span>
+              </label>
+              <select name="status" class="select select-bordered w-full">
+                @foreach($statusOptions as $val=>$label)
+                  <option value="{{ $val }}" @selected((string)($status ?? '') === (string)$val)>{{ $label }}</option>
+                @endforeach
+              </select>
+            </div>
+          @endif
 
-      <div class="sm:col-span-3">
-        <button class="inline-flex items-center px-4 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700">検索</button>
-        <a href="{{ route('users.applicants.index') }}" class="ml-3 text-sm text-gray-500 hover:underline">リセット</a>
-      </div>
-    </form>
+          <div>
+            <label class="label py-0">
+              <span class="label-text text-xs text-base-content/60">キーワード（氏名 / メール / 電話）</span>
+            </label>
+            <input
+              type="text"
+              name="q"
+              value="{{ $keyword ?? '' }}"
+              class="input input-bordered w-full"
+              placeholder="例）山田 / example@nibi.co.jp"
+            >
+          </div>
 
-    {{-- 一覧テーブル --}}
-    <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
-      <div class="overflow-x-auto">
-        <table class="min-w-full text-sm">
-          <thead class="bg-gray-50 border-b">
-            <tr>
-              <th class="px-4 py-2 text-left text-gray-500">ID</th>
-              <th class="px-4 py-2 text-left text-gray-500">応募日時</th>
-              <th class="px-4 py-2 text-left text-gray-500">応募者</th>
-              <th class="px-4 py-2 text-left text-gray-500">メール / 電話</th>
-              <th class="px-4 py-2 text-left text-gray-500">対象求人</th>
-              @if(!empty($statusOptions ?? []))<th class="px-4 py-2 text-left text-gray-500">ステータス</th>@endif
-              <th class="px-4 py-2 text-left text-gray-500">操作</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y">
-            @forelse(($applications ?? []) as $a)
-              @php
-                $job  = $a->job ?? null;
-                $name = $a->name ?? ($a->full_name ?? ($a->applicant_name ?? '（氏名未登録）'));
-                $mail = $a->email ?? '';
-                $tel  = $a->tel ?? ($a->phone ?? '');
-                $statusText = $a->status ?? '';
-              @endphp
+          <div class="sm:col-span-3">
+            <div class="flex items-center gap-3">
+              <button class="btn btn-primary">検索</button>
+              <a href="{{ route('users.applicants.index') }}" class="btn btn-ghost btn-sm">リセット</a>
+            </div>
+          </div>
+        </div>
+      </form>
+
+      {{-- 一覧テーブル --}}
+      <div class="card bg-base-100 border border-base-200 shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="table">
+            <thead>
               <tr>
-                <td class="px-4 py-2 text-gray-700">#{{ $a->id }}</td>
-                <td class="px-4 py-2 text-gray-700">{{ optional($a->created_at)->format('Y/m/d H:i') ?? '—' }}</td>
-                <td class="px-4 py-2 text-gray-900 font-medium">{{ $name }}</td>
-                <td class="px-4 py-2 text-gray-700">
-                  @if($mail)<a class="text-indigo-600 hover:underline" href="mailto:{{ $mail }}">{{ $mail }}</a>@endif
-                  @if($mail && $tel) <span class="text-gray-300 mx-1">/</span> @endif
-                  @if($tel)<a class="text-indigo-600 hover:underline" href="tel:{{ $tel }}">{{ $tel }}</a>@endif
-                </td>
-                <td class="px-4 py-2 text-gray-700">
-                  @if($job)[#{{ $job->id }}] {{ $job->title ?? '（タイトル未設定）' }}@else — @endif
-                </td>
-                @if(!empty($statusOptions ?? []))
-                <td class="px-4 py-2">
-                  <span class="inline-flex items-center px-2 py-0.5 rounded text-xs
-                    @class([
-                      'bg-yellow-50 text-yellow-800' => $statusText==='pending',
-                      'bg-blue-50 text-blue-800'     => $statusText==='reviewing',
-                      'bg-emerald-50 text-emerald-800'=> $statusText==='passed',
-                      'bg-rose-50 text-rose-800'     => $statusText==='rejected',
-                      'bg-gray-100 text-gray-700'    => !in_array($statusText,['pending','reviewing','passed','rejected']),
-                    ])
-                  ">{{ $statusText !== '' ? $statusText : '—' }}</span>
-                </td>
-                @endif
-                <td class="px-4 py-2">
-                  <a href="{{ route('users.applicants.show', $a->id) }}" class="text-indigo-600 hover:underline text-sm">詳細</a>
-                </td>
+                <th>ID</th>
+                <th>応募日時</th>
+                <th>応募者</th>
+                <th>メール / 電話</th>
+                <th>対象求人</th>
+                @if(!empty($statusOptions ?? []))<th>ステータス</th>@endif
+                <th class="w-24">操作</th>
               </tr>
-            @empty
-              <tr>
-                <td class="px-4 py-6 text-center text-gray-500" colspan="7">応募はまだありません。</td>
-              </tr>
-            @endforelse
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              @forelse(($applications ?? []) as $a)
+                @php
+                  $job  = $a->job ?? null;
+                  $name = $a->name ?? ($a->full_name ?? ($a->applicant_name ?? '（氏名未登録）'));
+                  $mail = $a->email ?? '';
+                  $tel  = $a->tel ?? ($a->phone ?? '');
+                  $statusText = $a->status ?? '';
+                  $badgeClass = [
+                    'pending'   => 'badge-warning',
+                    'reviewing' => 'badge-info',
+                    'passed'    => 'badge-success',
+                    'rejected'  => 'badge-error',
+                  ][$statusText] ?? 'badge-ghost';
+                @endphp
+                <tr>
+                  <td class="align-top">#{{ $a->id }}</td>
+                  <td class="align-top">{{ optional($a->created_at)->format('Y/m/d H:i') ?? '—' }}</td>
+                  <td class="align-top font-medium text-base-content">{{ $name }}</td>
+                  <td class="align-top">
+                    @if($mail)
+                      <a class="link" href="mailto:{{ $mail }}">{{ $mail }}</a>
+                    @endif
+                    @if($mail && $tel) <span class="opacity-40 mx-1">/</span> @endif
+                    @if($tel)
+                      <a class="link" href="tel:{{ $tel }}">{{ $tel }}</a>
+                    @endif
+                  </td>
+                  <td class="align-top">
+                    @if($job)
+                      [#{{ $job->id }}] {{ $job->title ?? '（タイトル未設定）' }}
+                    @else
+                      —
+                    @endif
+                  </td>
+                  @if(!empty($statusOptions ?? []))
+                    <td class="align-top">
+                      <span class="badge {{ $badgeClass }}">{{ $statusText !== '' ? $statusText : '—' }}</span>
+                    </td>
+                  @endif
+                  <td class="align-top">
+                    <a href="{{ route('users.applicants.show', $a->id) }}" class="btn btn-ghost btn-xs">詳細</a>
+                  </td>
+                </tr>
+              @empty
+                <tr>
+                  <td colspan="7">
+                    <div class="p-10 text-center text-base-content/60">応募はまだありません。</div>
+                  </td>
+                </tr>
+              @endforelse
+            </tbody>
+          </table>
+        </div>
 
-      <div class="px-4 py-3 border-t bg-gray-50">
-        {{ ($applications ?? null)?->links() }}
+        <div class="card-footer border-t bg-base-200/30">
+          {{ ($applications ?? null)?->links() }}
+        </div>
       </div>
     </div>
-
   </div>
-</div>
-@endsection
+</x-app-layout>

@@ -1,45 +1,88 @@
-@extends('layouts.front')
+{{-- resources/views/mypage/applications/index.blade.php --}}
+@extends('layouts.app')
 @section('title','応募履歴')
-@section('content')
-  <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-    @if (view()->exists('components.front.page-header'))
-      <x-front.page-header title="応募履歴" subtitle="あなたの応募の一覧です" />
-    @else
-      <h1 class="text-2xl font-bold mb-6">応募履歴</h1>
-    @endif
 
-    @if($apps->isEmpty())
-      <div class="mt-6 bg-white border rounded-lg shadow-sm p-8 text-center text-gray-600">
+@section('content')
+<div class="py-8 sm:py-10">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+
+    {{-- ヘッダー（ダッシュボード準拠） --}}
+    <div class="bg-base-100 border border-base-200 rounded-2xl px-6 py-5 shadow-sm mb-6">
+      <h1 class="text-2xl font-semibold tracking-tight text-base-content">応募履歴</h1>
+      <p class="text-sm text-base-content/60 mt-1">あなたの応募の一覧です</p>
+    </div>
+
+    @php
+      /** @var \Illuminate\Contracts\Pagination\LengthAwarePaginator|\Illuminate\Support\Collection $apps */
+      $list = $apps ?? collect();
+    @endphp
+
+    @if($list->isEmpty())
+      <div class="bg-base-100 border border-base-200 rounded-xl p-8 text-center text-base-content/60">
         応募履歴はまだありません。
       </div>
     @else
-      <div class="mt-6 bg-white border rounded-lg shadow-sm overflow-hidden">
-        <table class="w-full text-sm">
-          <thead class="bg-gray-50 border-b">
-            <tr>
-              <th class="text-left px-4 py-3 font-medium text-gray-600">応募日時</th>
-              <th class="text-left px-4 py-3 font-medium text-gray-600">求人</th>
-              <th class="text-left px-4 py-3 font-medium text-gray-600">会社</th>
-              <th class="text-left px-4 py-3 font-medium text-gray-600">ステータス</th>
-              <th class="text-right px-4 py-3 font-medium text-gray-600">詳細</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-gray-100">
-            @foreach($apps as $a)
+      <div class="card bg-base-100 border border-base-200 shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="table">
+            <thead>
               <tr>
-                <td class="px-4 py-3 whitespace-nowrap">{{ $a->created_at?->format('Y/m/d H:i') }}</td>
-                <td class="px-4 py-3">{{ $a->job->title ?? '-' }}</td>
-                <td class="px-4 py-3">{{ $a->job->company->name ?? '-' }}</td>
-                <td class="px-4 py-3">{{ $statusLabels[$a->status] ?? $a->status ?? '—' }}</td>
-                <td class="px-4 py-3 text-right">
-                  <a href="{{ route('mypage.applications.show', $a->id) }}" class="text-indigo-600 hover:underline">見る</a>
-                </td>
+                <th>応募日時</th>
+                <th>求人</th>
+                <th>会社</th>
+                <th>ステータス</th>
+                <th class="w-24 text-right">詳細</th>
               </tr>
-            @endforeach
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              @forelse($list as $a)
+                @php
+                  $job     = $a->job ?? null;
+                  $company = $job?->company ?? null;
+                  $status  = $a->status ?? '';
+
+                  $badgeClass = [
+                    'pending'   => 'badge-warning',
+                    'reviewing' => 'badge-info',
+                    'passed'    => 'badge-success',
+                    'rejected'  => 'badge-error',
+                  ][$status] ?? 'badge-ghost';
+                @endphp
+                <tr>
+                  <td class="align-top whitespace-nowrap">
+                    {{ optional($a->created_at)->format('Y/m/d H:i') ?? '—' }}
+                  </td>
+                  <td class="align-top">{{ $job->title ?? '—' }}</td>
+                  <td class="align-top">{{ $company->name ?? '—' }}</td>
+                  <td class="align-top">
+                    <span class="badge {{ $badgeClass }}">
+                      {{ ($statusLabels[$status] ?? $status) ?: '—' }}
+                    </span>
+                  </td>
+                  <td class="align-top text-right">
+                    <a href="{{ route('mypage.applications.show', $a->id) }}" class="btn btn-ghost btn-xs">見る</a>
+                  </td>
+                </tr>
+              @empty
+                <tr>
+                  <td colspan="5">
+                    <div class="p-10 text-center text-base-content/60">応募履歴はまだありません。</div>
+                  </td>
+                </tr>
+              @endforelse
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card-footer border-t bg-base-200/30">
+          {{-- ページネーション（LengthAwarePaginator のときのみ表示） --}}
+          @if(method_exists($list, 'links'))
+            {{ $list->links() }}
+          @endif
+        </div>
       </div>
-      <div class="mt-6">{{ $apps->links() }}</div>
     @endif
+
   </div>
+</div>
 @endsection

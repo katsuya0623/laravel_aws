@@ -1,36 +1,31 @@
 {{-- resources/views/dashboard.blade.php --}}
 <x-app-layout>
   <x-slot name="header">
-    <div class="text-center">
-      <h2 class="font-semibold text-2xl tracking-tight">ダッシュボード</h2>
-      <p class="text-gray-500 text-sm mt-1">ここから各機能へ移動できます。</p>
+    <div class="bg-base-100 border border-base-200 rounded-2xl px-6 py-5 shadow-sm">
+      <h2 class="text-2xl font-semibold tracking-tight text-base-content text-center">ダッシュボード</h2>
+      <p class="text-center text-base-content/60 text-sm mt-1">ここから各機能へ移動できます。</p>
     </div>
   </x-slot>
 
   @php
-    // ✅ Blade内では use を使えないので、完全修正版
-    // Routeファサードをそのまま参照可能（use不要）
+    /* ---------------- 見た目トークン（daisyUI） ---------------- */
+    $card   = 'group card border border-base-200 bg-base-100 shadow-sm transition
+               hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring ring-primary/30';
+    $body   = 'card-body p-5 sm:p-6 flex items-center gap-4';
+    $icon   = 'grid place-content-center w-12 h-12 rounded-xl';
+    $title  = 'text-base font-semibold text-base-content';
+    $desc   = 'text-sm text-base-content/60 leading-relaxed';
+    $chevBtn= 'btn btn-ghost btn-circle ml-auto shrink-0 group-hover:translate-x-0.5 transition';
+    $badge  = 'badge badge-sm';
 
-    // ===== 共通スタイル =====
-    $btn = 'group flex items-center gap-4 rounded-2xl border border-gray-200 bg-white p-7
-            shadow-sm transition hover:-translate-y-0.5 hover:shadow-md hover:border-indigo-200
-            hover:bg-indigo-50/40 focus:outline-none focus:ring-2 focus:ring-indigo-500/30';
-    $iconWrap = 'grid place-items-center h-12 w-12 rounded-xl bg-indigo-50 text-indigo-600';
-    $arrow = 'ml-auto text-gray-400 transition group-hover:translate-x-0.5 group-hover:text-gray-600';
-    $title = 'text-base font-semibold leading-tight';
-    $desc  = 'text-sm text-gray-500';
-
-    // ===== 安全なURLヘルパ =====
+    /* ---------------- 既存ロジック（変更なし） ---------------- */
     $r = function(array $names, $param = null, ?string $fallback = null) {
-      foreach ($names as $n) {
-        if (\Illuminate\Support\Facades\Route::has($n)) {
-          return $param !== null ? route($n, $param) : route($n);
-        }
+      foreach ($names as $n) if (\Illuminate\Support\Facades\Route::has($n)) {
+        return $param !== null ? route($n, $param) : route($n);
       }
       return $fallback ?? '#';
     };
 
-    // ===== ロール/ガード判定 =====
     $webUser     = auth('web')->user();
     $role        = $webUser->role ?? null;
     $isFront     = $webUser && in_array($role, ['enduser','company'], true);
@@ -38,7 +33,6 @@
     $isEnduser   = $isFront && $role === 'enduser';
     $isAdminOnly = ! $isFront && auth('admin')->check();
 
-    // ===== リンク =====
     $postsIndexUrl = $r(['front.posts.index','posts.index'], null, url('/posts'));
     $jobsFrontUrl  = $r(['front.jobs.index','jobs.index','recruit_jobs.index'], null, url('/recruit_jobs'));
     $jobsAdminUrl  = $r(['admin.jobs.index','admin.recruit_jobs.index'], null, url('/admin/recruit_jobs'));
@@ -54,143 +48,191 @@
     $companyApplicantsUrl = $r(['users.applicants.index','company.applicants.index'], null, url('/users/applicants'));
     $sponsoredArticlesUrl = $r(['users.sponsored_articles.index','sponsored_articles.index'], null, url('/users/sponsored-articles'));
 
-    $adminPostsIndexUrl  = $r(['admin.posts.index'], null, url('/admin/posts'));
-    $adminPostsCreateUrl = $r(['admin.posts.create'], null, url('/admin/posts/create'));
-    $adminUsersIndexUrl  = $r(['admin.users.index'], null, url('/admin/users'));
-    $adminUsersCreateUrl = $r(['admin.users.create'], null, url('/admin/users/create'));
-    $adminCompaniesUrl   = $r(['admin.companies.index'], null, url('/admin/companies'));
-
-    // ===== バッジ件数 =====
     $favCount = 0;
-    try { if ($webUser && method_exists($webUser, 'favorites')) { $favCount = $webUser->favorites()->count(); } } catch (\Throwable $e) {}
+    try { if ($webUser && method_exists($webUser,'favorites')) $favCount = $webUser->favorites()->count(); } catch (\Throwable $e) {}
     $pendingApplicantsCount = 0;
-    try {
-      if ($isCompany && method_exists($webUser, 'pendingApplicantsCount')) {
-        $pendingApplicantsCount = (int) $webUser->pendingApplicantsCount();
-      }
-    } catch (\Throwable $e) {}
+    try { if ($isCompany && method_exists($webUser,'pendingApplicantsCount')) $pendingApplicantsCount = (int)$webUser->pendingApplicantsCount(); } catch (\Throwable $e) {}
   @endphp
 
-  {{-- ====== カード一覧 ====== --}}
-  <div class="py-10">
+  <div class="py-8 sm:py-10">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">コンテンツ管理</h3>
+      <div class="flex items-center gap-3 mb-5">
+        <span class="text-xs uppercase tracking-wide text-base-content/60">コンテンツ管理</span>
+        <div class="divider divider-horizontal my-0"></div>
+      </div>
 
-      <div class="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      {{-- auto-fit でカードが気持ちよく折り返す＆高さ揃え --}}
+      <div class="grid items-stretch gap-4 sm:gap-5"
+           style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));">
 
         {{-- 投稿一覧 --}}
-        <a href="{{ $postsIndexUrl }}" class="{{ $btn }}">
-          <span class="{{ $iconWrap }}">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 12h16M4 18h7"/>
-            </svg>
-          </span>
-          <span>
-            <div class="{{ $title }}">投稿一覧（フロント）</div>
-            <div class="{{ $desc }}">サイト側に公開された記事</div>
-          </span>
-          <span class="{{ $arrow }}">→</span>
+        <a href="{{ $postsIndexUrl }}" class="{{ $card }}">
+          <div class="{{ $body }}">
+            <span class="{{ $icon }} bg-primary/10 text-primary">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M4 6h16M4 12h16M4 18h7"/>
+              </svg>
+            </span>
+            <div class="flex-1">
+              <div class="{{ $title }}">投稿一覧（フロント）</div>
+              <div class="{{ $desc }}">サイト側に公開された記事</div>
+            </div>
+            <button type="button" class="{{ $chevBtn }}">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+              </svg>
+            </button>
+          </div>
         </a>
 
         {{-- 求人一覧 --}}
-        <a href="{{ $jobsIndexUrl }}" class="{{ $btn }}">
-          <span class="{{ $iconWrap }}">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M4 7h16v2H4zM4 11h16v2H4zM4 15h10v2H4z"/>
-            </svg>
-          </span>
-          <span>
-            <div class="{{ $title }}">{{ $jobsIndexTitle }}</div>
-            <div class="{{ $desc }}">{{ $jobsIndexDesc }}</div>
-          </span>
-          <span class="{{ $arrow }}">→</span>
+        <a href="{{ $jobsIndexUrl }}" class="{{ $card }}">
+          <div class="{{ $body }}">
+            <span class="{{ $icon }} bg-secondary/10 text-secondary">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M4 7h16v2H4zM4 11h16v2H4zM4 15h10v2H4z"/>
+              </svg>
+            </span>
+            <div class="flex-1">
+              <div class="{{ $title }}">{{ $jobsIndexTitle }}</div>
+              <div class="{{ $desc }}">{{ $jobsIndexDesc }}</div>
+            </div>
+            <button type="button" class="{{ $chevBtn }}">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+              </svg>
+            </button>
+          </div>
         </a>
 
-        {{-- エンドユーザー --}}
+        {{-- ===== エンドユーザー ===== --}}
         @if($isEnduser)
-          <a href="{{ $userProfileUrl }}" class="{{ $btn }}">
-            <span class="{{ $iconWrap }}">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5z"/><path d="M21 20a8.94 8.94 0 0 0-9-9 8.94 8.94 0 0 0-9 9v1h18z"/>
-              </svg>
-            </span>
-            <span>
-              <div class="{{ $title }}">プロフィール</div>
-              <div class="{{ $desc }}">自己紹介・アイコン画像を登録</div>
-            </span>
-            <span class="{{ $arrow }}">→</span>
-          </a>
-
-          <a href="{{ $userApplicationsUrl }}" class="{{ $btn }}">
-            <span class="{{ $iconWrap }}">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3.75 5.25h16.5m-16.5 4.5h16.5m-16.5 4.5h9.75M3 6v12a2.25 2.25 0 002.25 2.25h13.5A2.25 2.25 0 0021 18V6" />
-              </svg>
-            </span>
-            <span>
-              <div class="{{ $title }}">応募履歴</div>
-              <div class="{{ $desc }}">あなたの応募状況を確認</div>
-            </span>
-            <span class="{{ $arrow }}">→</span>
-          </a>
-
-          <a href="{{ $userFavoritesUrl }}" class="{{ $btn }}">
-            <span class="{{ $iconWrap }}"><span class="text-lg">★</span></span>
-            <span>
-              <div class="flex items-center gap-2">
-                <div class="{{ $title }}">お気に入り</div>
-                <span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">{{ $favCount }}</span>
+          <a href="{{ $userProfileUrl }}" class="{{ $card }}">
+            <div class="{{ $body }}">
+              <span class="{{ $icon }} bg-accent/10 text-accent">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5z"/><path d="M21 20a8.94 8.94 0 0 0-9-9 8.94 8.94 0 0 0-9 9v1h18z"/>
+                </svg>
+              </span>
+              <div class="flex-1">
+                <div class="{{ $title }}">プロフィール</div>
+                <div class="{{ $desc }}">自己紹介・アイコン画像を登録</div>
               </div>
-              <div class="{{ $desc }}">求人のお気に入り一覧</div>
-            </span>
-            <span class="{{ $arrow }}">→</span>
+              <button type="button" class="{{ $chevBtn }}">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                </svg>
+              </button>
+            </div>
+          </a>
+
+          <a href="{{ $userApplicationsUrl }}" class="{{ $card }}">
+            <div class="{{ $body }}">
+              <span class="{{ $icon }} bg-info/10 text-info">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 5h6m-9 2h12v11.25A2.25 2.25 0 0 1 15.75 20.5H8.25A2.25 2.25 0 0 1 6 18.25V7z"/>
+                </svg>
+              </span>
+              <div class="flex-1">
+                <div class="{{ $title }}">応募履歴</div>
+                <div class="{{ $desc }}">あなたの応募状況を確認</div>
+              </div>
+              <button type="button" class="{{ $chevBtn }}">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                </svg>
+              </button>
+            </div>
+          </a>
+
+          <a href="{{ $userFavoritesUrl }}" class="{{ $card }}">
+            <div class="{{ $body }}">
+              <span class="{{ $icon }} bg-warning/10 text-warning">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M11.48 3.5l2.16 4.38 4.83.7-3.5 3.41.83 4.82-4.32-2.27-4.32 2.27.83-4.82-3.5-3.41 4.83-.7 2.16-4.38z"/>
+                </svg>
+              </span>
+              <div class="flex-1">
+                <div class="flex items-center gap-2">
+                  <div class="{{ $title }}">お気に入り</div>
+                  <span class="{{ $badge }}">{{ $favCount }}</span>
+                </div>
+                <div class="{{ $desc }}">求人のお気に入り一覧</div>
+              </div>
+              <button type="button" class="{{ $chevBtn }}">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                </svg>
+              </button>
+            </div>
           </a>
         @endif
 
-        {{-- 企業ユーザー --}}
+        {{-- ===== 企業ユーザー ===== --}}
         @if($isCompany)
-          <a href="{{ $companyEditUrl }}" class="{{ $btn }}">
-            <span class="{{ $iconWrap }}">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M3 21V4a1 1 0 0 1 1-1h7v18H3zM13 21h7V8h-7v13z"/>
-              </svg>
-            </span>
-            <span>
-              <div class="{{ $title }}">企業情報</div>
-              <div class="{{ $desc }}">企業プロフィールの編集</div>
-            </span>
-            <span class="{{ $arrow }}">→</span>
+          <a href="{{ $companyEditUrl }}" class="{{ $card }}">
+            <div class="{{ $body }}">
+              <span class="{{ $icon }} bg-secondary/10 text-secondary">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M3 21V4a1 1 0 0 1 1-1h7v18H3zM13 21h7V8h-7v13z"/>
+                </svg>
+              </span>
+              <div class="flex-1">
+                <div class="{{ $title }}">企業情報</div>
+                <div class="{{ $desc }}">企業プロフィールの編集</div>
+              </div>
+              <button type="button" class="{{ $chevBtn }}">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                </svg>
+              </button>
+            </div>
           </a>
 
-          <a href="{{ $companyApplicantsUrl }}" class="{{ $btn }}">
-            <span class="{{ $iconWrap }}">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7.5A2.5 2.5 0 0 1 5.5 5h13A2.5 2.5 0 0 1 21 7.5V15a4 4 0 0 1-4 4h-2.382a2 2 0 0 1-1.447-.618l-1.342-1.414a2 2 0 0 0-1.447-.618H7a4 4 0 0 1-4-4V7.5z" />
-              </svg>
-            </span>
-            <span>
-              <div class="{{ $title }}">応募者一覧（企業）</div>
-              <span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">{{ $pendingApplicantsCount }}</span>
-              <div class="{{ $desc }}">自社求人への応募一覧</div>
-            </span>
-            <span class="{{ $arrow }}">→</span>
+          <a href="{{ $companyApplicantsUrl }}" class="{{ $card }}">
+            <div class="{{ $body }}">
+              <span class="{{ $icon }} bg-info/10 text-info">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 7.5A2.5 2.5 0 0 1 5.5 5h13A2.5 2.5 0 0 1 21 7.5V15a4 4 0 0 1-4 4h-2.382a2 2 0 0 1-1.447-.618l-1.342-1.414a2 2 0 0 0-1.447-.618H7a4 4 0 0 1-4-4V7.5z"/>
+                </svg>
+              </span>
+              <div class="flex-1">
+                <div class="flex items-center gap-2">
+                  <div class="{{ $title }}">応募者一覧（企業）</div>
+                  <span class="{{ $badge }}">{{ $pendingApplicantsCount }}</span>
+                </div>
+                <div class="{{ $desc }}">自社求人への応募一覧</div>
+              </div>
+              <button type="button" class="{{ $chevBtn }}">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                </svg>
+              </button>
+            </div>
           </a>
 
-          <a href="{{ $sponsoredArticlesUrl }}" class="{{ $btn }}">
-            <span class="{{ $iconWrap }}">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2a5 5 0 1 1 0 10 5 5 0 0 1 0-10z"/><path d="M7 13l5 3 5-3v7l-5-3-5 3v-7z"/>
-              </svg>
-            </span>
-            <span>
-              <div class="{{ $title }}">スポンサー記事一覧</div>
-              <div class="{{ $desc }}">スポンサーの記事</div>
-            </span>
-            <span class="{{ $arrow }}">→</span>
+          <a href="{{ $sponsoredArticlesUrl }}" class="{{ $card }}">
+            <div class="{{ $body }}">
+              <span class="{{ $icon }} bg-warning/10 text-warning">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2a5 5 0 1 1 0 10 5 5 0 0 1 0-10z"/><path d="M7 13l5 3 5-3v7l-5-3-5 3v-7z"/>
+                </svg>
+              </span>
+              <div class="flex-1">
+                <div class="{{ $title }}">スポンサー記事一覧</div>
+                <div class="{{ $desc }}">スポンサーの記事</div>
+              </div>
+              <button type="button" class="{{ $chevBtn }}">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                </svg>
+              </button>
+            </div>
           </a>
         @endif
-
       </div>
     </div>
   </div>
+
+  <script>document.documentElement.dataset.theme ||= 'dousoko';</script>
 </x-app-layout>
