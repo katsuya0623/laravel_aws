@@ -231,6 +231,16 @@ if (! \Illuminate\Support\Facades\Route::has('admin.login')) {
     });
 }
 
+/* ===========================================================
+| ★ 管理者ダッシュボードURL変更対応（追記）
+|===========================================================*/
+// ★ /admin → /admin/dashboard（未ログイン時は /admin/login）
+Route::get('/admin', function () {
+    return auth('admin')->check()
+        ? redirect('/admin/dashboard')   // 管理者ログイン済 → ダッシュボードへ
+        : redirect('/admin/login');      // 未ログイン → 管理者ログインへ
+})->name('admin.root');
+
 /* ------------------------------------------------------------------
 | Admin（auth:admin）
 |-------------------------------------------------------------------*/

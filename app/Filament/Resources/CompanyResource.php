@@ -35,6 +35,11 @@ use Illuminate\Support\Str;
 class CompanyResource extends Resource
 {
     protected static ?string $model = Company::class;
+    protected static ?string $navigationIcon  = 'heroicon-o-building-office-2';
+protected static ?string $navigationGroup = 'Management';
+protected static ?int    $navigationSort  = 12;
+
+    
 
     public static function getEloquentQuery(): Builder
     {
@@ -43,6 +48,7 @@ class CompanyResource extends Resource
 
     /** Company本体 + company_profiles の編集フォーム */
     protected static function formSchema(): array
+    
     {
         // ヘルパ：確実に脱水する（$data に入れる）
         $dehydrate = fn($c) => $c->dehydrated(true);

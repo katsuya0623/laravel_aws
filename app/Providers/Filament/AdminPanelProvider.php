@@ -8,10 +8,9 @@ use Filament\Http\Middleware\Authenticate;
 use Filament\Support\Colors\Color;
 use Filament\Navigation\NavigationGroup;
 use Filament\Navigation\NavigationItem;
-use Filament\Pages;
 
 use App\Filament\Resources\PostResource;
-use App\Filament\Widgets\AdminQuickLinks; // ★ 追加
+use App\Filament\Widgets\AdminQuickLinks;
 
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -28,47 +27,50 @@ class AdminPanelProvider extends PanelProvider
         return $panel
             ->default()
             ->id('admin')
-            ->path('admin')
+
+            // ★ Filament パネルのベース URL を /admin/dashboard に変更
+            ->path('admin/dashboard')
+
             ->authGuard('admin')
             ->brandName('nibi Admin')
             ->colors(['primary' => Color::Indigo])
 
-            // 相対テーマは一旦停止（404対策）
+            // 相対テーマは一旦停止
             // ->theme('themes/admin/theme.css')
 
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
-            // 自作AdminDashboardを拾わせない
-            // ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
+            ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
 
             ->resources([
                 PostResource::class,
             ])
 
-            // 純正ダッシュボードのみ明示
-            ->pages([
-                Pages\Dashboard::class,
-            ])
+            // （ダッシュボードページは既定のまま。パス変更だけでOK）
+            // ->pages([...]) は不要
 
-            // ★ Admin専用のクイックリンクWidgetを表示
             ->widgets([
                 AdminQuickLinks::class,
             ])
 
-            ->homeUrl('/admin')
+            // ★ パネルのホームURLも /admin/dashboard に
+            ->homeUrl('/admin/dashboard')
 
             ->navigationItems([
                 NavigationItem::make('記事')
                     ->group('Post')
                     ->icon('heroicon-o-document-text')
                     ->url(fn () => PostResource::getUrl())
-                    ->isActiveWhen(fn () => request()->is('admin/posts*'))
+                    // ★ パス判定を /admin/dashboard/... に更新
+                    ->isActiveWhen(fn () => request()->is('admin/dashboard/posts*'))
                     ->sort(1),
 
                 NavigationItem::make('求人一覧')
                     ->group('Management')
                     ->icon('heroicon-o-briefcase')
+                    // ここは Blade ルート（/admin/...）なので URL 生成は従来どおりでOK
                     ->url(fn () => route('admin.jobs.index'))
+                    // こちらも従来どおり（Blade 側は /admin/... のまま）
                     ->isActiveWhen(fn () => request()->is('admin/recruit_jobs*') || request()->is('admin/jobs*'))
                     ->sort(10),
 

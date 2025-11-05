@@ -21,6 +21,12 @@ class WorkHistoryResource extends Resource
     protected static ?string $modelLabel       = '職歴';
     protected static ?string $pluralModelLabel = '職歴（閲覧のみ）';
 
+    /** ★ サイドバーに表示しない */
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     public static function table(Table $table): Table
     {
         return $table
