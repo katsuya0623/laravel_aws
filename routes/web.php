@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Middleware\EnsureCompanyProfileCompleted; // ★追加
 
+
 // Top / Front
 use App\Http\Controllers\Front\LandingController;
 use App\Http\Controllers\Front\CompanyController as FCompanyController;
@@ -19,8 +20,7 @@ use App\Http\Controllers\Admin\PostController as AdminPostController;
 use App\Http\Controllers\Admin\ApplicationsController;
 use App\Http\Controllers\Admin\CompanyUserAssignController;
 use App\Http\Controllers\Admin\UserQuickAssignController;
-use App\Http\Controllers\Admin\EndUserProfileController; // ★追加
-
+use App\Http\Controllers\Auth\CompanyInviteAcceptController;
 
 // ★ 招待＆オンボーディング用
 use App\Http\Controllers\Admin\CompanyInvitationController;
@@ -73,18 +73,15 @@ Route::get('/posts/{slugOrId}', [FrontPostController::class, 'show'])->name('fro
 
 // ===== Company profile (企業ユーザーのみ) =====
 Route::middleware(['auth:web', 'role:company'])->group(function () {
-    Route::get('/company/edit', [CompanyProfileController::class, 'edit'])->name('user.company.edit');
-
-    // ★ PATCH も受ける
-    Route::match(['POST', 'PATCH'], '/company/update', [CompanyProfileController::class, 'update'])
-        ->name('user.company.update');
+    Route::get('/company/edit',    [CompanyProfileController::class, 'edit'])->name('user.company.edit');
+    Route::post('/company/update', [CompanyProfileController::class, 'update'])->name('user.company.update');
 });
 
 // ===== Legacy redirects (301) =====
 Route::permanentRedirect('/company/company', '/company');
-Route::permanentRedirect('/jobs/jobs', '/jobs');
-Route::permanentRedirect('/companys', '/company');
-Route::permanentRedirect('/companies', '/company');
+Route::permanentRedirect('/jobs/jobs',       '/jobs');
+Route::permanentRedirect('/companys',        '/company');
+Route::permanentRedirect('/companies',       '/company');
 
 // 旧 /jobs/{slugOrId} → 新 /recruit_jobs/{slugOrId}
 Route::get('/jobs/{slugOrId}', fn(string $slugOrId) => redirect("/recruit_jobs/{$slugOrId}", 301))
@@ -123,14 +120,14 @@ Route::prefix('recruit_jobs')->group(function () {
 
     // 企業ユーザー専用（作成・更新系）→ プロフィール未完了なら強制オンボーディング
     Route::middleware(['auth:web', 'role:company', EnsureCompanyProfileCompleted::class])->group(function () {
-        Route::get('/create', [FrontJobController::class, 'create'])->name('front.jobs.create');
-        Route::post('/', [FrontJobController::class, 'store'])->name('front.jobs.store');
+        Route::get('/create',       [FrontJobController::class, 'create'])->name('front.jobs.create');
+        Route::post('/',            [FrontJobController::class, 'store'])->name('front.jobs.store');
 
-        Route::get('/{job}/edit', [FrontJobController::class, 'edit'])
+        Route::get('/{job}/edit',   [FrontJobController::class, 'edit'])
             ->whereNumber('job')->name('front.jobs.edit');
-        Route::patch('/{job}', [FrontJobController::class, 'update'])
+        Route::patch('/{job}',      [FrontJobController::class, 'update'])
             ->whereNumber('job')->name('front.jobs.update');
-        Route::delete('/{job}', [FrontJobController::class, 'destroy'])
+        Route::delete('/{job}',     [FrontJobController::class, 'destroy'])
             ->whereNumber('job')->name('front.jobs.destroy');
     });
 
@@ -163,8 +160,8 @@ Route::prefix('recruit_jobs')->group(function () {
 
     // お気に入り（エンドユーザー専用）
     Route::middleware(['auth:web', 'role:enduser'])->group(function () {
-        Route::post('/{jobId}/favorite', [FavoriteController::class, 'store'])->whereNumber('jobId')->name('favorites.store');
-        Route::delete('/{jobId}/favorite', [FavoriteController::class, 'destroy'])->whereNumber('jobId')->name('favorites.destroy');
+        Route::post('/{jobId}/favorite',        [FavoriteController::class, 'store'])->whereNumber('jobId')->name('favorites.store');
+        Route::delete('/{jobId}/favorite',      [FavoriteController::class, 'destroy'])->whereNumber('jobId')->name('favorites.destroy');
         Route::post('/{jobId}/favorite/toggle', [FavoriteController::class, 'toggle'])->whereNumber('jobId')->name('favorites.toggle');
     });
 
@@ -230,16 +227,9 @@ if (! \Illuminate\Support\Facades\Route::has('admin.login')) {
             ->name('login.post');
     });
 }
+// ★ 管理者ログイン済みで /admin を踏んだら /admin/dashboard へ
+Route::middleware('auth:admin')->get('/admin', fn () => redirect('/admin/dashboard'));
 
-/* ===========================================================
-| ★ 管理者ダッシュボードURL変更対応（追記）
-|===========================================================*/
-// ★ /admin → /admin/dashboard（未ログイン時は /admin/login）
-Route::get('/admin', function () {
-    return auth('admin')->check()
-        ? redirect('/admin/dashboard')   // 管理者ログイン済 → ダッシュボードへ
-        : redirect('/admin/login');      // 未ログイン → 管理者ログインへ
-})->name('admin.root');
 
 /* ------------------------------------------------------------------
 | Admin（auth:admin）
@@ -277,18 +267,12 @@ Route::prefix('admin')->middleware(['auth:admin'])->name('admin.')->group(functi
     Route::post('/preupload', [AdminPostController::class, 'preupload'])->name('preupload');
 
     // 行内操作API
-    Route::post('users/{user}/set-role', [UserQuickAssignController::class, 'setRole'])
+    Route::post('users/{user}/set-role',                   [UserQuickAssignController::class, 'setRole'])
         ->whereNumber('user')->name('users.set_role');
-    Route::post('users/{user}/assign-company', [UserQuickAssignController::class, 'assignCompany'])
+    Route::post('users/{user}/assign-company',             [UserQuickAssignController::class, 'assignCompany'])
         ->whereNumber('user')->name('users.assign_company');
     Route::delete('users/{user}/assign-company/{company}', [UserQuickAssignController::class, 'unassign'])
         ->whereNumber(['user', 'company'])->name('users.unassign_company');
-
-    // ★★★ ここに追加 ↓↓↓ ★★★
-    Route::get('/users/{user}/profile', [EndUserProfileController::class, 'show'])
-        ->whereNumber('user')
-        ->name('users.profile.show');
-    // ★★★ ここまで ★★★
 
     /* Recruit Jobs（Filament に委譲） */
     $recruitSlug = method_exists(RecruitJobResource::class, 'getSlug') ? RecruitJobResource::getSlug() : 'recruit-jobs';
@@ -322,14 +306,8 @@ Route::prefix('admin')->middleware(['auth:admin'])->name('admin.')->group(functi
     })->whereNumber('job')->name('jobs.edit');
 
     // 応募一覧（Blade 版）
-    Route::get('applications', [ApplicationsController::class, 'index'])->name('applications.index');
+    Route::get('applications',        [ApplicationsController::class, 'index'])->name('applications.index');
     Route::get('applications/export', [ApplicationsController::class, 'export'])->name('applications.export');
-
-    // ★ 会社×メールでパスワードリセット（ユーザー未作成でも作成→紐付け→送信）
-    Route::post(
-        '/companies/{company}/send-reset-by-email',
-        [\App\Http\Controllers\Admin\CompanyInvitationController::class, 'sendResetByEmail']
-    )->whereNumber('company')->name('companies.send_reset_by_email');
 
     // アップロード疎通テスト
     Route::match(['get', 'post'], 'posts/__upload-test', function (Request $r) {
@@ -347,10 +325,7 @@ Route::prefix('admin')->middleware(['auth:admin'])->name('admin.')->group(functi
 /* ===== オンボーディング（強制導線） ===== */
 Route::middleware(['web', 'auth:web'])->group(function () {
     Route::get('/onboarding/company', [CompanyProfileController::class, 'edit'])->name('onboarding.company.edit');
-
-    // ★ PATCH も受ける
-    Route::match(['POST', 'PATCH'], '/onboarding/company', [CompanyProfileController::class, 'update'])
-        ->name('onboarding.company.update');
+    Route::post('/onboarding/company', [CompanyProfileController::class, 'update'])->name('onboarding.company.update');
 });
 
 /* ===== Filament 暫定エイリアス（保険） ===== */
@@ -392,33 +367,6 @@ Route::post('/email/verification-notification', function (\Illuminate\Http\Reque
     return back()->with('status', 'verification-link-sent');
 })->middleware(['auth', 'throttle:3,1'])->name('verification.send');
 
-/* ===== ★ Password Reset（通知が参照する password.reset のフォールバック） ===== */
-if (! Route::has('password.reset')) {
-    Route::middleware('guest')->group(function () {
-        // Breeze コントローラが存在するならそれを使う
-        if (
-            class_exists(\App\Http\Controllers\Auth\PasswordResetLinkController::class)
-            && class_exists(\App\Http\Controllers\Auth\NewPasswordController::class)
-        ) {
-
-            Route::get('/forgot-password',  [\App\Http\Controllers\Auth\PasswordResetLinkController::class, 'create'])->name('password.request');
-            Route::post('/forgot-password', [\App\Http\Controllers\Auth\PasswordResetLinkController::class, 'store'])->name('password.email');
-
-            // ★ ResetPassword通知が参照する本命
-            Route::get('/reset-password/{token}', [\App\Http\Controllers\Auth\NewPasswordController::class, 'create'])->name('password.reset');
-            Route::post('/reset-password',        [\App\Http\Controllers\Auth\NewPasswordController::class, 'store'])->name('password.store');
-        } else {
-            // 最低限：リンク先のプレースホルダ（ビューは用意してください）
-            Route::get('/reset-password/{token}', function (string $token) {
-                return view('auth.reset-password', [
-                    'token' => $token,
-                    'email' => request('email'),
-                ]);
-            })->name('password.reset');
-        }
-    });
-}
-
 /* ===== Breeze Profile ===== */
 Route::middleware('auth:web')->group(function () {
     if (class_exists(ProfileController::class)) {
@@ -457,15 +405,13 @@ Route::middleware('auth:web')->put('/password', [PasswordController::class, 'upd
 
 // ===== 招待受諾フロー =====
 Route::prefix('invites')->name('invites.')->group(function () {
-    // 受諾フォーム表示（署名 + 期限検証）
+    // 受諾フォーム表示（※署名付きURLは使っていないので 'signed' を外す）
     Route::get('/accept/{token}', [InviteAcceptController::class, 'show'])
-        ->where('token', '[A-Za-z0-9\-]{16,}')  // ← 緩和：ハイフン可・16文字以上
-        ->middleware(['signed', 'throttle:20,1'])   // ★追加
+        ->middleware(['throttle:20,1'])
         ->name('accept');
 
     // 受諾の完了（パスワード設定 & 紐付け）
     Route::post('/accept/{token}', [InviteAcceptController::class, 'accept'])
-        ->where('token', '[A-Za-z0-9\-]{16,}')
         ->middleware(['throttle:20,1'])
         ->name('accept.post');
 
@@ -473,18 +419,7 @@ Route::prefix('invites')->name('invites.')->group(function () {
     Route::view('/expired', 'invites.expired')->name('expired');
 });
 
-// 短縮リンク：/invite/{token} → 本命ルートへ委譲
-Route::get('/invite/{token}', function (string $token) {
-    $inv = \App\Models\CompanyInvitation::where('token', $token)->first();
-    if (! $inv) return redirect()->route('invites.expired');
-    if (optional($inv->expires_at)->isPast()) return redirect()->route('invites.expired');
-    $signed = \Illuminate\Support\Facades\URL::temporarySignedRoute(
-        'invites.accept',
-        $inv->expires_at,
-        ['token' => $inv->token]
-    );
-    return redirect()->to($signed);
-})
-    ->where('token', '[A-Za-z0-9\-]{16,}')   // ← 同じく緩和
-    ->middleware(['guest', 'throttle:20,1'])
-    ->name('company.invite.accept');
+
+Route::get('/invite/{token}', [CompanyInviteAcceptController::class, 'accept'])
+    ->name('company.invite.accept')   // 好きな名前でOK
+    ->middleware('web');              // 認証前でも踏めるように

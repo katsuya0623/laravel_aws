@@ -10,7 +10,9 @@ use Filament\Navigation\NavigationGroup;
 use Filament\Navigation\NavigationItem;
 
 use App\Filament\Resources\PostResource;
+use App\Filament\Resources\CompanyResource;
 use App\Filament\Widgets\AdminQuickLinks;
+use App\Filament\Pages\AdminDashboard;
 
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -19,6 +21,7 @@ use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\AuthenticateSession;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
+use Illuminate\Support\Facades\Route;
 
 class AdminPanelProvider extends PanelProvider
 {
@@ -27,50 +30,57 @@ class AdminPanelProvider extends PanelProvider
         return $panel
             ->default()
             ->id('admin')
-
-            // ★ Filament パネルのベース URL を /admin/dashboard に変更
-            ->path('admin/dashboard')
-
+            ->path('admin')
             ->authGuard('admin')
             ->brandName('nibi Admin')
             ->colors(['primary' => Color::Indigo])
 
-            // 相対テーマは一旦停止
-            // ->theme('themes/admin/theme.css')
-
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
-            ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
+            // ページは明示登録でもOKだが、今回は確実に動かすため routes で生やす
+            // ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
 
             ->resources([
                 PostResource::class,
+                CompanyResource::class,
             ])
 
-            // （ダッシュボードページは既定のまま。パス変更だけでOK）
-            // ->pages([...]) は不要
+            ->pages([
+                AdminDashboard::class, // ページ自体は登録
+            ])
+
+            // ★ ここで /admin/dashboard を“相対名”で登録（filament.admin. は自動付与）
+            ->routes(function () {
+                Route::get('/dashboard', AdminDashboard::class)
+                    ->name('pages.dashboard'); // ← 重要：相対名にする
+            })
 
             ->widgets([
                 AdminQuickLinks::class,
             ])
 
-            // ★ パネルのホームURLも /admin/dashboard に
-            ->homeUrl('/admin/dashboard')
+            // ログイン後のホーム
+            ->homeUrl(fn () => AdminDashboard::getUrl())
 
             ->navigationItems([
                 NavigationItem::make('記事')
                     ->group('Post')
                     ->icon('heroicon-o-document-text')
-                    ->url(fn () => PostResource::getUrl())
-                    // ★ パス判定を /admin/dashboard/... に更新
-                    ->isActiveWhen(fn () => request()->is('admin/dashboard/posts*'))
+                    ->url(fn () => PostResource::getUrl('index'))
+                    ->isActiveWhen(fn () => request()->is('admin/posts*'))
                     ->sort(1),
+
+                NavigationItem::make('企業一覧')
+                    ->group('Management')
+                    ->icon('heroicon-o-building-office-2')
+                    ->url(fn () => CompanyResource::getUrl('index'))
+                    ->isActiveWhen(fn () => request()->is('admin/companies*'))
+                    ->sort(9),
 
                 NavigationItem::make('求人一覧')
                     ->group('Management')
                     ->icon('heroicon-o-briefcase')
-                    // ここは Blade ルート（/admin/...）なので URL 生成は従来どおりでOK
                     ->url(fn () => route('admin.jobs.index'))
-                    // こちらも従来どおり（Blade 側は /admin/... のまま）
                     ->isActiveWhen(fn () => request()->is('admin/recruit_jobs*') || request()->is('admin/jobs*'))
                     ->sort(10),
 
@@ -83,7 +93,6 @@ class AdminPanelProvider extends PanelProvider
             ])
 
             ->navigationGroups([
-                NavigationGroup::make('Company'),
                 NavigationGroup::make('Post'),
                 NavigationGroup::make('Management'),
             ])

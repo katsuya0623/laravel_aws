@@ -5,10 +5,10 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Validation\ValidationException;   // 既存
-use Illuminate\Support\Facades\Schema;          // 既存
-use Illuminate\Database\Eloquent\Builder;       // 既存
-use Illuminate\Support\Str;                     // ★ 追加：パス正規化に使用
+use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Str;
 
 class Company extends Model
 {
@@ -24,7 +24,12 @@ class Company extends Model
 
     protected $appends = ['logo_url'];
 
-    // ===== 保存直前バリデーション（既存） =====
+    // （任意）N+1回避したい場合はコメントアウト解除
+    // protected $with = ['profile'];
+
+    /* =============================
+       保存直前バリデーション
+       ============================= */
     protected static function booted(): void
     {
         static::saving(function (Company $company) {
@@ -42,19 +47,23 @@ class Company extends Model
         });
     }
 
-    /** リレーション（既存） */
+    /* =============================
+       リレーション
+       ============================= */
+
     public function users()
     {
         return $this->belongsToMany(\App\Models\User::class)->withTimestamps();
     }
 
-    public function profile(): ?\App\Models\CompanyProfile
+    /** company_id ベースの hasOne 関係に統一 */
+    public function profile()
     {
-        if (empty($this->name)) return null;
-        return \App\Models\CompanyProfile::where('company_name', $this->name)->first();
+        // 第2引数: 子テーブルの外部キー, 第3引数: 親のローカルキー
+        return $this->hasOne(\App\Models\CompanyProfile::class, 'company_id', 'id');
     }
 
-    // 招待リレーション（既存）
+    // 招待（既存）
     public function invitations()
     {
         if (Schema::hasTable('company_invitations')) {
@@ -80,12 +89,12 @@ class Company extends Model
         ]);
     }
 
-    /** 
-     * ★ 修正：ロゴURLを堅牢に解決
-     * - http(s) はそのまま
-     * - 'storage/...','public/...' を正規化
-     * - disk('public') と public_path の両方を探索
-     * - 見つからなければ NoImage
+    /* =============================
+       アクセサ
+       ============================= */
+
+    /**
+     * ロゴURLを堅牢に解決
      */
     public function getLogoUrlAttribute(): ?string
     {
@@ -93,7 +102,7 @@ class Company extends Model
         $candidates = [];
         foreach ([
             $this->getRawLogoPathFromCompanies(),
-            optional($this->profile())->logo_path ?? null,
+            optional($this->profile)->logo_path ?? null,
         ] as $p) {
             if ($p) $candidates[] = trim($p);
         }
@@ -110,23 +119,23 @@ class Company extends Model
                 $p = Str::after($p, 'public/');
             }
 
-            // storage/xxx（= public/storage/... を直接指す）ならそのまま返す
+            // storage/xxx（/storage を直接返す）
             if (Str::startsWith($p, 'storage/')) {
                 return asset($p);
             }
 
-            // storage/app/public にある？
+            // storage/app/public ?
             if (Storage::disk('public')->exists($p)) {
                 return Storage::disk('public')->url($p); // /storage/xxx
             }
 
-            // public 直下？
+            // public 直下 ?
             if (file_exists(public_path($p))) {
                 return asset($p);
             }
         }
 
-        // なければ NoImage（実ファイル名に合わせて）
+        // 見つからなければ NoImage
         return asset('images/no-image.svg');
     }
 
@@ -139,19 +148,31 @@ class Company extends Model
     }
 
     /* ================================
-       完了プロフィール企業のみ取得（既存）
+       完了プロフィール企業のみ取得
        ================================ */
     public function scopeWithCompletedProfile($query)
     {
         if (!Schema::hasTable('company_profiles')) return $query;
 
+        $hasCompanyId = Schema::hasColumn('company_profiles', 'company_id');
+        $hasCompleted = Schema::hasColumn('company_profiles', 'is_completed');
+
+        if (!$hasCompleted) return $query;
+
+        if ($hasCompanyId) {
+            // ✅ 推奨: company_id で結合（より確実）
+            return $query
+                ->join('company_profiles as cp', 'cp.company_id', '=', 'companies.id')
+                ->where('cp.is_completed', true)
+                ->select('companies.*');
+        }
+
+        // フォールバック: 名前で結合
         $cpNameCol = Schema::hasColumn('company_profiles', 'company_name')
             ? 'company_name'
             : (Schema::hasColumn('company_profiles', 'name') ? 'name' : null);
 
-        if (!$cpNameCol || !Schema::hasColumn('company_profiles', 'is_completed')) {
-            return $query;
-        }
+        if (!$cpNameCol) return $query;
 
         return $query
             ->join('company_profiles as cp', "cp.$cpNameCol", '=', 'companies.name')

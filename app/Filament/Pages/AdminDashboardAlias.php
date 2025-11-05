@@ -4,9 +4,9 @@ namespace App\Filament\Pages;
 
 use Filament\Pages\Dashboard;
 
-class AdminDashboard extends Dashboard
+class AdminDashboardAlias extends Dashboard
 {
-    // ✅ slugを明示指定して /admin/dashboard にする
+    // /admin/dashboard を提供
     public static function getSlug(): string
     {
         return 'dashboard';

@@ -9,6 +9,8 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use App\Support\RoleResolver;
@@ -19,30 +21,26 @@ class CompanyProfileController extends Controller
     /** 編集画面 */
     public function edit()
     {
-        // 会社が無ければ自動作成（slug も自動採番）
-        $company = $this->resolveCompanyForUser(true);
+        // 会社：必ず1つに固定（新規は初回のみ）
+        $company = $this->getOrCreateSingleCompanyForUser();
         if (!$company) {
             abort(403, '会社が見つかりません。管理者にお問い合わせください。');
         }
 
-        // slug 列が存在していて空の旧データを救済
+        // slug が空なら補完
         if (Schema::hasColumn('companies', 'slug') && empty($company->slug)) {
             $company->slug = $this->generateUniqueCompanySlug($company->name ?: 'company');
             $company->save();
         }
 
-        // company_id ベース（user_id は参照しない）
-        $profile = CompanyProfile::where('company_id', $company->id)->first();
-
-        if (!$profile) {
-            // 初期プロファイル（まだ DB に無い）
-            $profile = new CompanyProfile([
-                'company_id'   => $company->id,
-                // 互換: company_name / name 列があれば初期値を入れる
+        // プロフィールを company_id で 1:1 固定（新規は最初の1回だけ）
+        $profile = CompanyProfile::firstOrCreate(
+            ['company_id' => $company->id],
+            [
                 'company_name' => Schema::hasColumn('company_profiles', 'company_name') ? ($company->name ?? null) : null,
                 'name'         => Schema::hasColumn('company_profiles', 'name')         ? ($company->name ?? null) : null,
-            ]);
-        }
+            ]
+        );
 
         $merged = $this->normalizeProfileForView($profile, $company);
         $role   = RoleResolver::resolve(Auth::user());
@@ -65,11 +63,11 @@ class CompanyProfileController extends Controller
         return $this->saveProfile($request);
     }
 
-    /** 共通の保存処理（company_id に一本化） */
+    /** 共通の保存処理（company_id に一本化＆常に既存行を更新） */
     private function saveProfile(Request $request)
     {
-        // 会社が無ければ自動作成（slug も自動採番）
-        $company = $this->resolveCompanyForUser(true);
+        // 会社：必ず同じ1社を掴む（分身防止）
+        $company = $this->getOrCreateSingleCompanyForUser();
         if (!$company) {
             abort(403, '会社が見つかりません。管理者にお問い合わせください。');
         }
@@ -100,7 +98,6 @@ class CompanyProfileController extends Controller
             'industry'           => ['required', 'string', 'max:255'],
             'employees'          => ['required', 'integer', 'min:1', 'max:1000000'],
             'founded_on'         => ['nullable', 'date', 'before_or_equal:today'],
-
             'logo' => [
                 'nullable',
                 'file',
@@ -111,7 +108,6 @@ class CompanyProfileController extends Controller
                     $name = $file->getClientOriginalName() ?? '';
                     $extFromName = strtolower(pathinfo($name, PATHINFO_EXTENSION));
 
-                    // MIME が null でも落ちないように
                     $mime = strtolower((string) ($file->getMimeType() ?? ''));
                     $map  = [
                         'image/jpeg' => 'jpg',
@@ -140,8 +136,8 @@ class CompanyProfileController extends Controller
             'remove_logo' => ['sometimes', 'boolean'],
         ]);
 
-        // 1社1プロフィール（company_id 固定）
-        $profile = CompanyProfile::firstOrNew(['company_id' => $company->id]);
+        // 1社1プロフィール（company_id 固定）: 既存を掴み、なければ初回だけ作成
+        $profile = CompanyProfile::firstOrCreate(['company_id' => $company->id]);
 
         // ===== 入力 → DB 列マッピング =====
         // 会社名（互換列が存在すれば反映）
@@ -157,12 +153,22 @@ class CompanyProfileController extends Controller
             $profile->company_name_kana = $data['company_name_kana'] ?? $profile->company_name_kana;
         }
 
-        // 基本情報
+        // ★ TEL 列の自動選択（phone が無ければ tel へ）
+        $phoneCol = null;
+        if (Schema::hasColumn('company_profiles', 'phone')) {
+            $phoneCol = 'phone';
+        } elseif (Schema::hasColumn('company_profiles', 'tel')) {
+            $phoneCol = 'tel';
+        }
+        if ($phoneCol) {
+            $profile->{$phoneCol} = $data['tel'] ?? $profile->{$phoneCol};
+        }
+
+        // 基本情報（電話以外）
         foreach ([
             'description' => 'description',
             'website_url' => 'website_url',
             'email'       => 'email',
-            'tel'         => 'phone',        // tel -> phone
             'postal_code' => 'postal_code',
             'prefecture'  => 'prefecture',
             'city'        => 'city',
@@ -197,7 +203,7 @@ class CompanyProfileController extends Controller
             $profile->logo_path = null;
         }
 
-        // ロゴ保存
+        // ロゴ保存（上書き）
         if ($request->hasFile('logo') && Schema::hasColumn('company_profiles', 'logo_path')) {
             $newPath = $this->storeLogo($request->file('logo'));
             if ($profile->logo_path && Storage::disk('public')->exists($profile->logo_path)) {
@@ -214,18 +220,17 @@ class CompanyProfileController extends Controller
         $profile->company_id = $company->id; // 念のため
         $profile->save();
 
-        // 会社名は Company 側にも同期（存在する列のみ）
+        // Company 側の同期（会社名のみ／slugは空時のみ生成）
         if (!empty($data['company_name']) && Schema::hasColumn('companies', 'name')) {
             $company->name = $data['company_name'];
-            // slug は既存リンク保護のため維持。空のときだけ補完。
+
             if (Schema::hasColumn('companies', 'slug') && empty($company->slug)) {
                 $company->slug = $this->generateUniqueCompanySlug($company->name);
             }
             $company->save();
         }
 
-        // 企業名から Company 自動連携
-        // ★ 分身防止：create_if_missing=false ＆ IDで明示リンク
+        // 企業名から Company 自動連携（※create_if_missing=false で分身防止）
         try {
             CompanyAutoLinker::link(Auth::user(), [
                 'company_id'        => $company->id,
@@ -351,10 +356,8 @@ class CompanyProfileController extends Controller
     /** ユニークな slug を作る */
     private function generateUniqueCompanySlug(string $name): string
     {
-        // 日本語名も含めて slug 化（intl 拡張があればローマ字化）
         $base = Str::slug($name, '-');
         if ($base === '') {
-            // どうしても slug 化できない場合のフォールバック
             $base = 'company-' . Str::lower(Str::random(6));
         }
 
@@ -372,10 +375,7 @@ class CompanyProfileController extends Controller
     }
 
     /**
-     * ログインユーザーに紐づく Company を解決
-     * - company_user ピボットがあれば最優先
-     * - それが無ければ companies.user_id をフォールバック
-     * - $autoCreate=true のときは無ければ自動作成（slug 必須）
+     * 既存コード：必要なら残すが、分身防止のため本コントローラでは使用しない
      */
     private function resolveCompanyForUser(bool $autoCreate = false): ?Company
     {
@@ -383,7 +383,6 @@ class CompanyProfileController extends Controller
         $userId = $user?->id;
         if (!$userId) return null;
 
-        // 1) ピボット最優先
         if (Schema::hasTable('company_user')
             && Schema::hasColumn('company_user', 'user_id')
             && Schema::hasColumn('company_user', 'company_id')) {
@@ -393,10 +392,8 @@ class CompanyProfileController extends Controller
             }
         }
 
-        // 2) companies.user_id
         if (Schema::hasTable('companies') && Schema::hasColumn('companies', 'user_id')) {
             if ($c = Company::where('user_id', $userId)->first()) {
-                // ピボットがあれば張っておく
                 if (Schema::hasTable('company_user')
                     && Schema::hasColumn('company_user', 'user_id')
                     && Schema::hasColumn('company_user', 'company_id')) {
@@ -415,14 +412,12 @@ class CompanyProfileController extends Controller
             }
         }
 
-        // 3) belongsToMany フォールバック
         try {
             if (method_exists(\App\Models\User::class, 'companies') && $user) {
                 if ($c = $user->companies()->first()) return $c;
             }
         } catch (\Throwable $e) {}
 
-        // 4) 自動作成
         if (!$autoCreate || !Schema::hasTable('companies')) {
             return null;
         }
@@ -432,12 +427,10 @@ class CompanyProfileController extends Controller
 
         $company = new Company();
 
-        // 必須列を存在チェックしながら埋める
         if (Schema::hasColumn('companies', 'name'))    $company->name = $name;
         if (Schema::hasColumn('companies', 'slug'))    $company->slug = $this->generateUniqueCompanySlug($name);
         if (Schema::hasColumn('companies', 'user_id')) $company->user_id = $userId;
 
-        // フラグ列があれば初期化
         if (Schema::hasColumn('companies', 'status') && empty($company->status)) $company->status = 'draft';
         if (Schema::hasColumn('companies', 'is_public'))    $company->is_public = 0;
         if (Schema::hasColumn('companies', 'is_published')) $company->is_published = 0;
@@ -445,12 +438,50 @@ class CompanyProfileController extends Controller
 
         $company->save();
 
-        // ピボットがあれば紐付け
         if (Schema::hasTable('company_user')
             && Schema::hasColumn('company_user', 'user_id')
             && Schema::hasColumn('company_user', 'company_id')) {
             \DB::table('company_user')->updateOrInsert(
                 ['user_id' => $userId],
+                ['company_id' => $company->id]
+            );
+        }
+
+        return $company;
+    }
+
+    /**
+     * 分身防止：1ユーザー=1社を強制。既存を必ず掴み、無ければ初回のみ作成。
+     */
+    private function getOrCreateSingleCompanyForUser(): Company
+    {
+        $user = Auth::user();
+        $uid  = $user?->id;
+
+        // 既存を必ず掴む（最新を優先）
+        $company = Company::where('user_id', $uid)->orderByDesc('id')->first();
+
+        if (!$company) {
+            $name = (string) ($user->company_name ?? $user->name ?? '未設定の会社');
+            $name = Str::limit(trim($name) !== '' ? $name : '未設定の会社', 30, '');
+
+            $company = new Company();
+            if (Schema::hasColumn('companies', 'name'))    $company->name = $name;
+            if (Schema::hasColumn('companies', 'slug'))    $company->slug = $this->generateUniqueCompanySlug($name);
+            if (Schema::hasColumn('companies', 'user_id')) $company->user_id = $uid;
+            if (Schema::hasColumn('companies', 'status') && empty($company->status)) $company->status = 'draft';
+            if (Schema::hasColumn('companies', 'is_public'))    $company->is_public = 0;
+            if (Schema::hasColumn('companies', 'is_published')) $company->is_published = 0;
+            if (Schema::hasColumn('companies', 'published'))    $company->published = 0;
+            $company->save();
+        }
+
+        // ピボットがあればこの company.id に寄せる
+        if (Schema::hasTable('company_user')
+            && Schema::hasColumn('company_user', 'user_id')
+            && Schema::hasColumn('company_user', 'company_id')) {
+            \DB::table('company_user')->updateOrInsert(
+                ['user_id' => $uid],
                 ['company_id' => $company->id]
             );
         }
