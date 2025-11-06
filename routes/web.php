@@ -5,8 +5,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Auth\RegisteredUserController;
-use App\Http\Middleware\EnsureCompanyProfileCompleted; // ★追加
-
+use App\Http\Middleware\EnsureCompanyProfileCompleted;
 
 // Top / Front
 use App\Http\Controllers\Front\LandingController;
@@ -22,9 +21,8 @@ use App\Http\Controllers\Admin\CompanyUserAssignController;
 use App\Http\Controllers\Admin\UserQuickAssignController;
 use App\Http\Controllers\Auth\CompanyInviteAcceptController;
 
-// ★ 招待＆オンボーディング用
+// 招待
 use App\Http\Controllers\Admin\CompanyInvitationController;
-use App\Http\Controllers\CompanyProfileController;
 
 // Auth / Profile
 use App\Http\Controllers\ProfileController;
@@ -46,6 +44,10 @@ use App\Filament\Resources\PostResource;
 use Illuminate\Foundation\Auth\EmailVerificationRequest;
 
 use App\Http\Controllers\Invites\InviteAcceptController;
+
+// ★ Onboarding / Edit 用（新規）
+use App\Http\Controllers\OnboardingCompanyController;
+use App\Http\Controllers\CompanyEditController;
 
 /*
 |--------------------------------------------------------------------------
@@ -71,10 +73,18 @@ Route::permanentRedirect('/blog', '/');
 Route::get('/posts', [FrontPostController::class, 'index'])->name('front.posts.index');
 Route::get('/posts/{slugOrId}', [FrontPostController::class, 'show'])->name('front.posts.show'); // ← 本命
 
-// ===== Company profile (企業ユーザーのみ) =====
+// ===== Company profile (企業ユーザーのみ：編集専用) =====
 Route::middleware(['auth:web', 'role:company'])->group(function () {
-    Route::get('/company/edit',    [CompanyProfileController::class, 'edit'])->name('user.company.edit');
-    Route::post('/company/update', [CompanyProfileController::class, 'update'])->name('user.company.update');
+    // 2回目以降：編集画面
+    Route::get('/company/edit', [CompanyEditController::class, 'edit'])->name('user.company.edit');
+
+    // 更新（/company/edit に POST or PATCH）
+    Route::match(['post','patch'], '/company/edit', [CompanyEditController::class, 'update'])
+        ->name('user.company.update');
+
+    // 互換：旧フォームが /company/update に POST していても動くように
+    Route::post('/company/update', [CompanyEditController::class, 'update'])
+        ->name('user.company.update.legacy');
 });
 
 // ===== Legacy redirects (301) =====
@@ -230,13 +240,12 @@ if (! \Illuminate\Support\Facades\Route::has('admin.login')) {
 // ★ 管理者ログイン済みで /admin を踏んだら /admin/dashboard へ
 Route::middleware('auth:admin')->get('/admin', fn () => redirect('/admin/dashboard'));
 
-
 /* ------------------------------------------------------------------
 | Admin（auth:admin）
 |-------------------------------------------------------------------*/
 Route::prefix('admin')->middleware(['auth:admin'])->name('admin.')->group(function () {
 
-    // ✅ 招待：管理画面から招待作成/再送/取消
+    // 招待
     Route::post('/companies/invite', [CompanyInvitationController::class, 'store'])->name('companies.invite.store');
     Route::post('/companies/invite/{invitation}/resend', [CompanyInvitationController::class, 'resend'])->name('companies.invite.resend');
     Route::post('/companies/invite/{invitation}/cancel', [CompanyInvitationController::class, 'cancel'])->name('companies.invite.cancel');
@@ -247,32 +256,18 @@ Route::prefix('admin')->middleware(['auth:admin'])->name('admin.')->group(functi
         return back()->with('status', 'パスワードリセットメールを送信しました。');
     })->name('users.send_reset');
 
-    // ✅ Bladeの /admin/posts ルートは削除（Filament に任せる）
-    Route::get(
-        '__alias/filament-posts',
-        fn() => redirect(PostResource::getUrl('index', panel: 'admin'))
-    )->name('posts.index');
+    // Blade→Filament のエイリアス
+    Route::get('__alias/filament-posts', fn() => redirect(PostResource::getUrl('index', panel: 'admin')))->name('posts.index');
+    Route::get('__alias/filament-posts/create', fn() => redirect(PostResource::getUrl('create', panel: 'admin')))->name('posts.create');
+    Route::get('__alias/filament-posts/{post}/edit', fn($post) => redirect(PostResource::getUrl('edit', ['record' => $post], panel: 'admin')))->whereNumber('post')->name('posts.edit');
 
-    Route::get(
-        '__alias/filament-posts/create',
-        fn() => redirect(PostResource::getUrl('create', panel: 'admin'))
-    )->name('posts.create');
-
-    Route::get(
-        '__alias/filament-posts/{post}/edit',
-        fn($post) => redirect(PostResource::getUrl('edit', ['record' => $post], panel: 'admin'))
-    )->whereNumber('post')->name('posts.edit');
-
-    // ★互換：旧Bladeの AJAX プレアップロードが残っていても落ちないように
+    // 旧Blade AJAX の保険
     Route::post('/preupload', [AdminPostController::class, 'preupload'])->name('preupload');
 
     // 行内操作API
-    Route::post('users/{user}/set-role',                   [UserQuickAssignController::class, 'setRole'])
-        ->whereNumber('user')->name('users.set_role');
-    Route::post('users/{user}/assign-company',             [UserQuickAssignController::class, 'assignCompany'])
-        ->whereNumber('user')->name('users.assign_company');
-    Route::delete('users/{user}/assign-company/{company}', [UserQuickAssignController::class, 'unassign'])
-        ->whereNumber(['user', 'company'])->name('users.unassign_company');
+    Route::post('users/{user}/set-role',                   [UserQuickAssignController::class, 'setRole'])->whereNumber('user')->name('users.set_role');
+    Route::post('users/{user}/assign-company',             [UserQuickAssignController::class, 'assignCompany'])->whereNumber('user')->name('users.assign_company');
+    Route::delete('users/{user}/assign-company/{company}', [UserQuickAssignController::class, 'unassign'])->whereNumber(['user', 'company'])->name('users.unassign_company');
 
     /* Recruit Jobs（Filament に委譲） */
     $recruitSlug = method_exists(RecruitJobResource::class, 'getSlug') ? RecruitJobResource::getSlug() : 'recruit-jobs';
@@ -322,10 +317,12 @@ Route::prefix('admin')->middleware(['auth:admin'])->name('admin.')->group(functi
     })->name('posts.uploadtest');
 });
 
-/* ===== オンボーディング（強制導線） ===== */
+/* ===== オンボーディング（初回作成のみ） ===== */
 Route::middleware(['web', 'auth:web'])->group(function () {
-    Route::get('/onboarding/company', [CompanyProfileController::class, 'edit'])->name('onboarding.company.edit');
-    Route::post('/onboarding/company', [CompanyProfileController::class, 'update'])->name('onboarding.company.update');
+    Route::get('/onboarding/company',  [OnboardingCompanyController::class, 'create'])
+        ->name('onboarding.company.edit');    // ← ミドルウェアのホワイトリストと一致
+    Route::post('/onboarding/company', [OnboardingCompanyController::class, 'store'])
+        ->name('onboarding.company.update');
 });
 
 /* ===== Filament 暫定エイリアス（保険） ===== */
@@ -405,7 +402,7 @@ Route::middleware('auth:web')->put('/password', [PasswordController::class, 'upd
 
 // ===== 招待受諾フロー =====
 Route::prefix('invites')->name('invites.')->group(function () {
-    // 受諾フォーム表示（※署名付きURLは使っていないので 'signed' を外す）
+    // 受諾フォーム表示
     Route::get('/accept/{token}', [InviteAcceptController::class, 'show'])
         ->middleware(['throttle:20,1'])
         ->name('accept');
@@ -419,7 +416,6 @@ Route::prefix('invites')->name('invites.')->group(function () {
     Route::view('/expired', 'invites.expired')->name('expired');
 });
 
-
 Route::get('/invite/{token}', [CompanyInviteAcceptController::class, 'accept'])
-    ->name('company.invite.accept')   // 好きな名前でOK
-    ->middleware('web');              // 認証前でも踏めるように
+    ->name('company.invite.accept')
+    ->middleware('web');

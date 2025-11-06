@@ -10,7 +10,6 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use App\Support\RoleResolver;
@@ -41,6 +40,12 @@ class CompanyProfileController extends Controller
                 'name'         => Schema::hasColumn('company_profiles', 'name')         ? ($company->name ?? null) : null,
             ]
         );
+
+        // profile.user_id が存在し空なら紐付け（重複防止）
+        if (Schema::hasColumn('company_profiles', 'user_id') && empty($profile->user_id)) {
+            $profile->user_id = Auth::id();
+            $profile->save();
+        }
 
         $merged = $this->normalizeProfileForView($profile, $company);
         $role   = RoleResolver::resolve(Auth::user());
@@ -82,7 +87,7 @@ class CompanyProfileController extends Controller
             }
         }
 
-        // ▼ バリデーション
+        // ▼ バリデーション（フォームの必須に合わせる）
         $data = $request->validate([
             'company_name'       => ['nullable', 'string', 'max:30'],
             'company_name_kana'  => ['required', 'string', 'max:255', 'regex:/^[ァ-ヶー－\s　]+$/u'],
@@ -110,10 +115,10 @@ class CompanyProfileController extends Controller
 
                     $mime = strtolower((string) ($file->getMimeType() ?? ''));
                     $map  = [
-                        'image/jpeg' => 'jpg',
-                        'image/jpg'  => 'jpg',
-                        'image/png'  => 'png',
-                        'image/webp' => 'webp',
+                        'image/jpeg'    => 'jpg',
+                        'image/jpg'     => 'jpg',
+                        'image/png'     => 'png',
+                        'image/webp'    => 'webp',
                         'image/svg+xml' => 'svg',
                     ];
                     $extFromMime = $map[$mime] ?? null;
@@ -124,10 +129,10 @@ class CompanyProfileController extends Controller
                     $allowed = ['jpg','png','webp','svg','svgz'];
                     if (!in_array($ext, $allowed, true)) {
                         \Log::info('logo upload reject', [
-                            'client_name'=>$name,
-                            'mime'=>$mime,
-                            'ext_from_name'=>$extFromName,
-                            'ext_from_mime'=>$extFromMime
+                            'client_name'    => $name,
+                            'mime'           => $mime,
+                            'ext_from_name'  => $extFromName,
+                            'ext_from_mime'  => $extFromMime
                         ]);
                         return $fail('対応していないファイル形式です（jpg / png / webp / svg）。');
                     }
@@ -139,6 +144,11 @@ class CompanyProfileController extends Controller
         // 1社1プロフィール（company_id 固定）: 既存を掴み、なければ初回だけ作成
         $profile = CompanyProfile::firstOrCreate(['company_id' => $company->id]);
 
+        // profile.user_id が存在し空なら紐付け（重複防止）
+        if (Schema::hasColumn('company_profiles', 'user_id') && empty($profile->user_id)) {
+            $profile->user_id = Auth::id();
+        }
+
         // ===== 入力 → DB 列マッピング =====
         // 会社名（互換列が存在すれば反映）
         if (!empty($data['company_name'])) {
@@ -146,14 +156,14 @@ class CompanyProfileController extends Controller
             if (Schema::hasColumn('company_profiles', 'name'))         $profile->name         = $data['company_name'];
         }
 
-        // カナ
-        if (Schema::hasColumn('company_profiles', 'kana')) {
-            $profile->kana = $data['company_name_kana'] ?? $profile->kana;
-        } elseif (Schema::hasColumn('company_profiles', 'company_name_kana')) {
+        // カナ（company_name_kana or kana）
+        if (Schema::hasColumn('company_profiles', 'company_name_kana')) {
             $profile->company_name_kana = $data['company_name_kana'] ?? $profile->company_name_kana;
+        } elseif (Schema::hasColumn('company_profiles', 'kana')) {
+            $profile->kana = $data['company_name_kana'] ?? $profile->kana;
         }
 
-        // ★ TEL 列の自動選択（phone が無ければ tel へ）
+        // TEL 列の自動選択（phone が無ければ tel へ）
         $phoneCol = null;
         if (Schema::hasColumn('company_profiles', 'phone')) {
             $phoneCol = 'phone';
@@ -181,7 +191,7 @@ class CompanyProfileController extends Controller
             }
         }
 
-        // 人数
+        // 人数（employees_count or employees）
         if (Schema::hasColumn('company_profiles', 'employees_count')) {
             $profile->employees_count = $data['employees'] ?? $profile->employees_count;
         } elseif (Schema::hasColumn('company_profiles', 'employees')) {
@@ -212,9 +222,9 @@ class CompanyProfileController extends Controller
             $profile->logo_path = $newPath;
         }
 
-        // 完了判定
+        // 完了判定（company も参照）
         if (Schema::hasColumn('company_profiles', 'is_completed')) {
-            $profile->is_completed = $this->judgeCompleted($profile);
+            $profile->is_completed = $this->judgeCompleted($profile, $company);
         }
 
         $profile->company_id = $company->id; // 念のため
@@ -230,7 +240,7 @@ class CompanyProfileController extends Controller
             $company->save();
         }
 
-        // 企業名から Company 自動連携（※create_if_missing=false で分身防止）
+        // Company 自動連携（分身防止）
         try {
             CompanyAutoLinker::link(Auth::user(), [
                 'company_id'        => $company->id,
@@ -383,9 +393,11 @@ class CompanyProfileController extends Controller
         $userId = $user?->id;
         if (!$userId) return null;
 
-        if (Schema::hasTable('company_user')
-            && Schema::hasColumn('company_user', 'user_id')
-            && Schema::hasColumn('company_user', 'company_id')) {
+        if (
+            Schema::hasTable('company_user') &&
+            Schema::hasColumn('company_user', 'user_id') &&
+            Schema::hasColumn('company_user', 'company_id')
+        ) {
             $companyId = \DB::table('company_user')->where('user_id', $userId)->value('company_id');
             if ($companyId && ($c = Company::find($companyId))) {
                 return $c;
@@ -394,16 +406,18 @@ class CompanyProfileController extends Controller
 
         if (Schema::hasTable('companies') && Schema::hasColumn('companies', 'user_id')) {
             if ($c = Company::where('user_id', $userId)->first()) {
-                if (Schema::hasTable('company_user')
-                    && Schema::hasColumn('company_user', 'user_id')
-                    && Schema::hasColumn('company_user', 'company_id')) {
+                if (
+                    Schema::hasTable('company_user') &&
+                    Schema::hasColumn('company_user', 'user_id') &&
+                    Schema::hasColumn('company_user', 'company_id')
+                ) {
                     $exists = \DB::table('company_user')
                         ->where('user_id', $userId)
                         ->where('company_id', $c->id)
                         ->exists();
                     if (!$exists) {
                         \DB::table('company_user')->insert([
-                            'user_id' => $userId,
+                            'user_id'    => $userId,
                             'company_id' => $c->id,
                         ]);
                     }
@@ -438,9 +452,11 @@ class CompanyProfileController extends Controller
 
         $company->save();
 
-        if (Schema::hasTable('company_user')
-            && Schema::hasColumn('company_user', 'user_id')
-            && Schema::hasColumn('company_user', 'company_id')) {
+        if (
+            Schema::hasTable('company_user') &&
+            Schema::hasColumn('company_user', 'user_id') &&
+            Schema::hasColumn('company_user', 'company_id')
+        ) {
             \DB::table('company_user')->updateOrInsert(
                 ['user_id' => $userId],
                 ['company_id' => $company->id]
@@ -451,35 +467,93 @@ class CompanyProfileController extends Controller
     }
 
     /**
-     * 分身防止：1ユーザー=1社を強制。既存を必ず掴み、無ければ初回のみ作成。
+     * 分身防止：1ユーザー=1社を強制。pivot最優先で既存を必ず掴む。
      */
     private function getOrCreateSingleCompanyForUser(): Company
     {
         $user = Auth::user();
         $uid  = $user?->id;
 
-        // 既存を必ず掴む（最新を優先）
-        $company = Company::where('user_id', $uid)->orderByDesc('id')->first();
+        // 1) pivot を最優先
+        if (
+            Schema::hasTable('company_user') &&
+            Schema::hasColumn('company_user', 'user_id') &&
+            Schema::hasColumn('company_user', 'company_id')
+        ) {
+            $pivotCompanyId = \DB::table('company_user')
+                ->where('user_id', $uid)
+                ->value('company_id');
 
-        if (!$company) {
-            $name = (string) ($user->company_name ?? $user->name ?? '未設定の会社');
-            $name = Str::limit(trim($name) !== '' ? $name : '未設定の会社', 30, '');
-
-            $company = new Company();
-            if (Schema::hasColumn('companies', 'name'))    $company->name = $name;
-            if (Schema::hasColumn('companies', 'slug'))    $company->slug = $this->generateUniqueCompanySlug($name);
-            if (Schema::hasColumn('companies', 'user_id')) $company->user_id = $uid;
-            if (Schema::hasColumn('companies', 'status') && empty($company->status)) $company->status = 'draft';
-            if (Schema::hasColumn('companies', 'is_public'))    $company->is_public = 0;
-            if (Schema::hasColumn('companies', 'is_published')) $company->is_published = 0;
-            if (Schema::hasColumn('companies', 'published'))    $company->published = 0;
-            $company->save();
+            if ($pivotCompanyId && ($c = Company::find($pivotCompanyId))) {
+                if (Schema::hasColumn('companies', 'user_id') && empty($c->user_id)) {
+                    $c->user_id = $uid;
+                    $c->save();
+                }
+                return $c;
+            }
         }
 
-        // ピボットがあればこの company.id に寄せる
-        if (Schema::hasTable('company_user')
-            && Schema::hasColumn('company_user', 'user_id')
-            && Schema::hasColumn('company_user', 'company_id')) {
+        // 2) 自分の user_id を持つ Company を再利用（最新優先）
+        if (Schema::hasColumn('companies', 'user_id')) {
+            if ($c = Company::where('user_id', $uid)->orderByDesc('id')->first()) {
+                if (
+                    Schema::hasTable('company_user') &&
+                    Schema::hasColumn('company_user', 'user_id') &&
+                    Schema::hasColumn('company_user', 'company_id')
+                ) {
+                    \DB::table('company_user')->updateOrInsert(
+                        ['user_id' => $uid],
+                        ['company_id' => $c->id]
+                    );
+                }
+                return $c;
+            }
+        }
+
+        // 3) リレーションがあれば拾う
+        try {
+            if (method_exists(\App\Models\User::class, 'companies') && $user) {
+                if ($c = $user->companies()->first()) {
+                    if (Schema::hasColumn('companies', 'user_id') && empty($c->user_id)) {
+                        $c->user_id = $uid;
+                        $c->save();
+                    }
+                    if (
+                        Schema::hasTable('company_user') &&
+                        Schema::hasColumn('company_user', 'user_id') &&
+                        Schema::hasColumn('company_user', 'company_id')
+                    ) {
+                        \DB::table('company_user')->updateOrInsert(
+                            ['user_id' => $uid],
+                            ['company_id' => $c->id]
+                        );
+                    }
+                    return $c;
+                }
+            }
+        } catch (\Throwable $e) {
+            // no-op
+        }
+
+        // 4) 無ければ初回のみ作成
+        $name = (string) ($user->company_name ?? $user->name ?? '未設定の会社');
+        $name = Str::limit(trim($name) !== '' ? $name : '未設定の会社', 30, '');
+
+        $company = new Company();
+        if (Schema::hasColumn('companies', 'name'))    $company->name = $name;
+        if (Schema::hasColumn('companies', 'slug'))    $company->slug = $this->generateUniqueCompanySlug($name);
+        if (Schema::hasColumn('companies', 'user_id')) $company->user_id = $uid;
+        if (Schema::hasColumn('companies', 'status') && empty($company->status)) $company->status = 'draft';
+        if (Schema::hasColumn('companies', 'is_public'))    $company->is_public = 0;
+        if (Schema::hasColumn('companies', 'is_published')) $company->is_published = 0;
+        if (Schema::hasColumn('companies', 'published'))    $company->published = 0;
+        $company->save();
+
+        if (
+            Schema::hasTable('company_user') &&
+            Schema::hasColumn('company_user', 'user_id') &&
+            Schema::hasColumn('company_user', 'company_id')
+        ) {
             \DB::table('company_user')->updateOrInsert(
                 ['user_id' => $uid],
                 ['company_id' => $company->id]
@@ -489,22 +563,76 @@ class CompanyProfileController extends Controller
         return $company;
     }
 
-    /** 完了条件の簡易判定 */
-    private function judgeCompleted(CompanyProfile $p): bool
+    /**
+     * フォーム必須と完全一致で完了判定。profileで空なら company 側の値も参照。
+     * 必須: description / postal_code / prefecture / city / address1 / industry / company_name_kana(or kana) / employees(count)
+     */
+    private function judgeCompleted(CompanyProfile $p, ?Company $company = null): bool
     {
+        // 画面の赤＊に一致
+        $required = [
+            'description',   // 事業内容
+            'postal_code',   // 郵便番号
+            'prefecture',    // 都道府県
+            'city',          // 市区町村
+            'address1',      // 番地・建物
+            'industry',      // 業種
+        ];
+
+        // company 側で見に行く候補
+        $companyCols = [
+            'description' => ['description'],
+            'postal_code' => ['postal_code','zip'],
+            'prefecture'  => ['prefecture','state'],
+            'city'        => ['city'],
+            'address1'    => ['address1','street'],
+            'industry'    => ['industry'],
+        ];
+
         $need = 0; $have = 0;
 
-        foreach (['description','website_url','email','phone','postal_code','prefecture','city','address1','industry'] as $col) {
-            if (Schema::hasColumn('company_profiles', $col)) {
-                $need++;
-                if (!empty($p->{$col})) $have++;
-            }
-        }
-        if (Schema::hasColumn('company_profiles','logo_path')) {
+        foreach ($required as $col) {
             $need++;
-            if (!empty($p->logo_path)) $have++;
+            $ok = false;
+
+            if (Schema::hasColumn('company_profiles', $col) && filled($p->{$col})) {
+                $ok = true;
+            } elseif ($company) {
+                foreach (($companyCols[$col] ?? []) as $ck) {
+                    if (Schema::hasColumn('companies', $ck) && filled($company->{$ck})) {
+                        $ok = true; break;
+                    }
+                }
+            }
+            if ($ok) $have++;
         }
 
-        return $need > 0 ? ($have / $need) >= 0.6 : false;
+        // 会社名（カナ）: company_name_kana or kana（profile優先、無ければcompanyの近似列）
+        $need++;
+        $kanaOk = false;
+        if (Schema::hasColumn('company_profiles','company_name_kana') && filled($p->company_name_kana)) $kanaOk = true;
+        elseif (Schema::hasColumn('company_profiles','kana') && filled($p->kana)) $kanaOk = true;
+
+        if (!$kanaOk && $company) {
+            foreach (['company_name_kana','name_kana','company_kana','kana'] as $ck) {
+                if (Schema::hasColumn('companies', $ck) && filled($company->{$ck})) { $kanaOk = true; break; }
+            }
+        }
+        if ($kanaOk) $have++;
+
+        // 従業員数（profile: employees_count/employees → company: employees_count/employees）
+        $need++;
+        $empOk = false;
+        if (Schema::hasColumn('company_profiles','employees_count') && filled($p->employees_count)) $empOk = true;
+        if (Schema::hasColumn('company_profiles','employees') && filled($p->employees)) $empOk = true;
+        if (!$empOk && $company) {
+            foreach (['employees_count','employees'] as $ck) {
+                if (Schema::hasColumn('companies', $ck) && filled($company->{$ck})) { $empOk = true; break; }
+            }
+        }
+        if ($empOk) $have++;
+
+        // 完全一致
+        return $need > 0 ? ($have === $need) : false;
     }
 }
