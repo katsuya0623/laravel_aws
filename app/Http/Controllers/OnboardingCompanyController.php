@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class OnboardingCompanyController extends Controller
@@ -35,7 +36,7 @@ class OnboardingCompanyController extends Controller
             return redirect()->route('user.company.edit');
         }
 
-        // フォームと同じ必須
+        // フォームと同じ必須 + ロゴ(任意)
         $data = $request->validate([
             'company_name'       => ['nullable','string','max:30'],
             'company_name_kana'  => ['required','string','max:255','regex:/^[ァ-ヶー－\s　]+$/u'],
@@ -46,9 +47,11 @@ class OnboardingCompanyController extends Controller
             'address1'           => ['required','string','max:255'],
             'industry'           => ['required','string','max:255'],
             'employees'          => ['required','integer','min:1','max:1000000'],
+            'logo'               => ['nullable','file','max:10240','mimetypes:image/svg+xml,image/png,image/jpeg,image/webp'],
         ]);
 
-        DB::transaction(function () use ($user, $data) {
+        DB::transaction(function () use ($user, $data, $request) {
+
             // --- Company 作成 ---
             $name = $data['company_name'] ?? ($user->company_name ?? $user->name ?? '未設定の会社');
             $name = Str::limit(trim($name) !== '' ? $name : '未設定の会社', 30, '');
@@ -74,7 +77,7 @@ class OnboardingCompanyController extends Controller
                 'company_name'      => $company->name,
                 'company_name_kana' => $data['company_name_kana'],
                 'description'       => $data['description'],
-                'postal_code'       => $data['postal_code'],
+                'postal_code'       => preg_replace('/^(\d{3})-?(\d{4})$/', '$1-$2', $data['postal_code']), // 123-4567 に正規化
                 'prefecture'        => $data['prefecture'],
                 'city'              => $data['city'],
                 'address1'          => $data['address1'],
@@ -85,11 +88,33 @@ class OnboardingCompanyController extends Controller
                     $p->{$k} = $v;
                 }
             }
+
             // 従業員数（両候補対応）
             if (Schema::hasColumn('company_profiles', 'employees_count')) {
                 $p->employees_count = $data['employees'];
             } elseif (Schema::hasColumn('company_profiles', 'employees')) {
                 $p->employees = $data['employees'];
+            }
+
+            // --- ロゴ保存（任意） ---
+            if ($request->hasFile('logo') && $request->file('logo')->isValid()) {
+                $f = $request->file('logo');
+
+                $dir = 'company_logos/'.now()->format('Ymd');
+                $ext = strtolower($f->getClientOriginalExtension() ?: $f->extension());
+                if ($ext === 'svgz') $ext = 'svg';
+
+                $path = $f->storeAs($dir, Str::random(20).'.'.$ext, 'public');
+
+                // profile 側に保存（列があれば）
+                if (Schema::hasColumn('company_profiles','logo_path')) {
+                    $p->logo_path = $path; // 表示は Storage::url($path)
+                }
+                // company 側にも互換で入れる（列があれば）
+                if (Schema::hasColumn($company->getTable(),'logo_path')) {
+                    $company->logo_path = $path;
+                    $company->save();
+                }
             }
 
             $p->save();
@@ -109,8 +134,9 @@ class OnboardingCompanyController extends Controller
     private function markCompletedIfReady(CompanyProfile $p): void
     {
         // 充足チェック（存在する列だけ判定）
-        $kanaOk   = Schema::hasColumn('company_profiles','company_name_kana') ? filled($p->company_name_kana) :
-                    (Schema::hasColumn('company_profiles','kana') ? filled($p->kana) : true);
+        $kanaOk = Schema::hasColumn('company_profiles','company_name_kana')
+            ? filled($p->company_name_kana)
+            : (Schema::hasColumn('company_profiles','kana') ? filled($p->kana) : true);
 
         $ok =
             $kanaOk &&
@@ -123,7 +149,7 @@ class OnboardingCompanyController extends Controller
             (
                 (Schema::hasColumn('company_profiles','employees_count') && filled($p->employees_count)) ||
                 (Schema::hasColumn('company_profiles','employees')       && filled($p->employees)) ||
-                (!Schema::hasColumn('company_profiles','employees_count') && !Schema::hasColumn('company_profiles','employees')) // どちらの列も無い環境はスキップ
+                (!Schema::hasColumn('company_profiles','employees_count') && !Schema::hasColumn('company_profiles','employees'))
             );
 
         if (Schema::hasColumn('company_profiles', 'is_completed')) {

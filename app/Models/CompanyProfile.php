@@ -38,18 +38,17 @@ class CompanyProfile extends Model
         'industry',
         'employees',
         'founded_on',
-
-        // ※ 下記2つは存在しない環境があるため fillable には含めない
-        // 'is_completed',
-        // 'completed_at',
+        // ※ is_completed / completed_at は存在しない環境があるので fillable には含めない
     ];
 
     protected $casts = [
         'employees'  => 'integer',
         'founded_on' => 'date',
-        // 'is_completed' と 'completed_at' はカラムが無い環境があるので casts しない
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
+        // is_completed は列がある環境で整数として扱いたい
+        // （列が無い環境では getAttribute が null を返すだけ）
+        'is_completed' => 'integer',
     ];
 
     /* ------------------------------
@@ -90,28 +89,82 @@ class CompanyProfile extends Model
     }
 
     /* ============================================================
-       完了判定（フロント表示制御用）
+       完了判定（フォームの赤＊に合わせて揃える）
+       - 必須: description, postal_code, prefecture, city, address1, industry
+       - 会社名カナ: company_name_kana または kana のどちらか
+       - 従業員数: employees または employees_count のどちらか
+       - email/website/tel は任意（必須から外す）
        ============================================================ */
     public function passesCompletionValidation(): bool
     {
-        // 必須が埋まっているか
-        $required = [
-            'postal_code', 'prefecture', 'city', 'address1',
-            'industry', 'employees', 'email',
+        // 1) まず列の存在を確認しつつ値をチェック
+        $requiredCols = [
+            'description',
+            'postal_code',
+            'prefecture',
+            'city',
+            'address1',
+            'industry',
         ];
-        foreach ($required as $key) {
-            if (!filled($this->{$key})) return false;
+
+        foreach ($requiredCols as $col) {
+            // 列が存在しない場合は “判定対象外”
+            if (!self::hasColumn($col)) {
+                continue;
+            }
+            if (!filled($this->getAttribute($col))) {
+                return false;
+            }
         }
 
-        // 形式チェック
-        $v = Validator::make($this->getAttributes(), [
-            'email'       => ['required', 'email', 'max:255'],
+        // 2) 会社名カナ（どれか一つ埋まっていればOK）
+        $kanaOk = false;
+        foreach (['company_name_kana', 'kana'] as $col) {
+            if (self::hasColumn($col) && filled($this->getAttribute($col))) {
+                $kanaOk = true; break;
+            }
+        }
+        if (!$kanaOk) return false;
+
+        // 3) 従業員数（どちらかが存在して埋まっていればOK）
+        $empOk = false;
+        foreach (['employees', 'employees_count'] as $col) {
+            if (self::hasColumn($col) && filled($this->getAttribute($col))) {
+                $empOk = true; break;
+            }
+        }
+        // 列が両方とも存在しない環境は “判定対象外” として true 扱い
+        if (!(self::hasColumn('employees') || self::hasColumn('employees_count'))) {
+            $empOk = true;
+        }
+        if (!$empOk) return false;
+
+        // 4) 軽い形式チェック（任意項目は nullable）
+        $rules = [
+            'description' => ['nullable', 'string', 'max:2000'],
+            'postal_code' => ['nullable', 'string', 'max:20'],
+            'prefecture'  => ['nullable', 'string', 'max:255'],
+            'city'        => ['nullable', 'string', 'max:255'],
+            'address1'    => ['nullable', 'string', 'max:255'],
+            'industry'    => ['nullable', 'string', 'max:255'],
+            'company_name_kana' => ['nullable', 'string', 'max:255'],
+            'kana'        => ['nullable', 'string', 'max:255'],
+            'employees'   => ['nullable', 'integer', 'min:1'],
+            'employees_count' => ['nullable', 'integer', 'min:1'],
+            'email'       => ['nullable', 'email', 'max:255'],
             'website_url' => ['nullable', 'url', 'max:255'],
             'tel'         => ['nullable', 'regex:/^\+?[0-9\-\s()]{7,20}$/'],
-            'postal_code' => ['required', 'string', 'max:20'],
-            'employees'   => ['required', 'integer', 'min:1'],
-        ]);
+        ];
 
+        // バリデーションは “存在する列だけ” に限定
+        $data = [];
+        foreach (array_keys($rules) as $col) {
+            if (self::hasColumn($col)) {
+                $data[$col] = $this->getAttribute($col);
+            }
+        }
+
+        $v = Validator::make($data, array_intersect_key($rules, $data));
         return !$v->fails();
     }
 
@@ -121,32 +174,40 @@ class CompanyProfile extends Model
         return $this->passesCompletionValidation();
     }
 
-    /** 完了フラグを同期（存在するカラムにのみ反映） */
+    /** 完了フラグを同期（存在カラムのみ操作／手動で立てた 1 を尊重） */
     public function syncCompletionFlags(): void
     {
-        $done = $this->passesCompletionValidation();
-
-        // is_completed / completed_at の列が存在する場合のみ更新
-        $hasCompleted = self::hasColumn('is_completed');
+        $hasCompleted   = self::hasColumn('is_completed');
         $hasCompletedAt = self::hasColumn('completed_at');
 
         if (!$hasCompleted && !$hasCompletedAt) {
-            // どちらのカラムも無ければ何もしない
+            return; // どちらのカラムも無ければ何もしない
+        }
+
+        // ① DB の is_completed=1 を優先的に尊重（手動更新を潰さない）
+        $current = $hasCompleted ? (int) $this->getAttribute('is_completed') : 0;
+        if ($current === 1) {
+            // completed_at だけ補完して終了
+            if ($hasCompletedAt && empty($this->completed_at)) {
+                $this->setAttribute('completed_at', now());
+                $this->saveQuietly();
+            }
             return;
         }
 
-        // 現状の値（存在しない場合は null 扱い）
-        $currentCompleted = (bool) ($hasCompleted ? $this->getAttribute('is_completed') : false);
+        // ② ランタイム判定で充足していれば 1 を立てる
+        $done = $this->passesCompletionValidation();
 
-        if ($done && (!$currentCompleted)) {
-            if ($hasCompleted)    $this->setAttribute('is_completed', true);
-            if ($hasCompletedAt && empty($this->completed_at)) $this->setAttribute('completed_at', now());
-            // ここでイベントを再発火させない
+        if ($done) {
+            if ($hasCompleted)   $this->setAttribute('is_completed', 1);
+            if ($hasCompletedAt) $this->setAttribute('completed_at', $this->completed_at ?: now());
             $this->saveQuietly();
-        } elseif (!$done && $currentCompleted) {
-            if ($hasCompleted)    $this->setAttribute('is_completed', false);
-            if ($hasCompletedAt)  $this->setAttribute('completed_at', null);
-            $this->saveQuietly();
+        } else {
+            // 充足していない場合は “明示的に 0 を書き戻さない” （手動 1 を落とさない設計）
+            // 必要があれば以下を解放:
+            // if ($hasCompleted)   $this->setAttribute('is_completed', 0);
+            // if ($hasCompletedAt) $this->setAttribute('completed_at', null);
+            // $this->saveQuietly();
         }
     }
 
@@ -154,7 +215,7 @@ class CompanyProfile extends Model
     public function scopeCompleted($query)
     {
         return self::hasColumn('is_completed')
-            ? $query->where('is_completed', true)
+            ? $query->where('is_completed', 1)
             : $query;
     }
 

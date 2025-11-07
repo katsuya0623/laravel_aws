@@ -32,7 +32,7 @@ use Illuminate\Support\Str;
 class CompanyResource extends Resource
 {
     protected static ?string $model = Company::class;
-        // ▼ これを追加！
+    // ▼ これを追加！
     protected static bool $shouldRegisterNavigation = false;
 
     public static function getEloquentQuery(): Builder
@@ -149,7 +149,50 @@ class CompanyResource extends Resource
                     }),
 
                 /**
-                 * パスワードリセット送信
+                 * “紐づいてるメールアドレスに自動で送る” ボタン（追加）
+                 */
+                Action::make('quick_send_reset_link')
+                    ->label('リセット送信（自動）')
+                    ->icon('heroicon-o-paper-airplane')
+                    ->visible(fn (Company $record) => filled(CompanyResource::guessResetEmail($record)))
+                    ->requiresConfirmation()
+                    ->modalHeading('パスワードリセットリンクを送信')
+                    ->modalDescription(function (Company $record) {
+                        $email = CompanyResource::guessResetEmail($record);
+                        return $email
+                            ? "下記のメールに送信します。\n\n送信先: {$email}"
+                            : "送信先メールアドレスを特定できませんでした。";
+                    })
+                    ->modalSubmitActionLabel('送信する')
+                    ->action(function (Company $record) {
+                        $email = CompanyResource::guessResetEmail($record);
+
+                        if (! $email) {
+                            Notification::make()
+                                ->title('送信先を特定できません')
+                                ->body('「パスワードリセットリンクを送信」からメールを入力して送信してください。')
+                                ->danger()->send();
+                            return;
+                        }
+
+                        $user   = CompanyResource::ensureUserForEmail($record, $email);
+                        $status = CompanyResource::sendReset($user->email);
+
+                        if ($status === Password::RESET_LINK_SENT) {
+                            Notification::make()
+                                ->title('パスワードリセットリンクを送信しました')
+                                ->body('送信先: ' . $user->email)
+                                ->success()->send();
+                        } else {
+                            Notification::make()
+                                ->title('リセットリンクの送信に失敗しました')
+                                ->body('ステータス: ' . $status)
+                                ->danger()->send();
+                        }
+                    }),
+
+                /**
+                 * パスワードリセット送信（手動・入力あり）
                  */
                 Action::make('send_reset_link')
                     ->label('パスワードリセットリンクを送信')
@@ -350,6 +393,62 @@ class CompanyResource extends Resource
         }
 
         return null;
+    }
+
+    /** 送信先メールを自動推定（user → 招待 → company.email → profile.email） */
+    private static function guessResetEmail(Company $company): ?string
+    {
+        if ($u = self::resolveUserForCompany($company)) {
+            if (filled($u->email)) return $u->email;
+        }
+
+        if ($inv = self::pickInvitationEmail($company)) {
+            return $inv;
+        }
+
+        if (isset($company->email) && filled($company->email)) {
+            return $company->email;
+        }
+
+        if (Schema::hasTable('company_profiles') && Schema::hasColumn('company_profiles', 'email')) {
+            $profileEmail = DB::table('company_profiles')->where('company_id', $company->id)->value('email');
+            if ($profileEmail) return $profileEmail;
+        }
+
+        return null;
+    }
+
+    /** 指定メールのユーザーを用意し、会社に紐付けて返す */
+    private static function ensureUserForEmail(Company $company, string $email): User
+    {
+        $user = User::firstOrNew(['email' => $email]);
+
+        if (! $user->exists) {
+            $user->name     = $company->name ?? 'Company User';
+            $user->password = bcrypt(Str::random(24));
+        }
+
+        if (method_exists($user, 'assignRole')) {
+            try { $user->assignRole('company'); } catch (\Throwable $e) {}
+        }
+        if (property_exists($user, 'role'))      { $user->role = 'company'; }
+        if (property_exists($user, 'is_active')) { $user->is_active = true; }
+        if (Schema::hasColumn($user->getTable(), 'email_verified_at') && empty($user->email_verified_at)) {
+            $user->email_verified_at = now();
+        }
+
+        $user->save();
+
+        self::attachUserToCompany($company, $user);
+
+        return $user;
+    }
+
+    /** Password リセットを broker 設定に従って送信 */
+    private static function sendReset(string $email): string
+    {
+        $broker = config('auth.defaults.passwords', 'users');
+        return Password::broker($broker)->sendResetLink(['email' => $email]);
     }
 
     /** 会社とユーザーの紐付けを安全に作成 */
