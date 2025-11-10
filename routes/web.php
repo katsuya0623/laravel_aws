@@ -20,6 +20,8 @@ use App\Http\Controllers\Admin\ApplicationsController;
 use App\Http\Controllers\Admin\CompanyUserAssignController;
 use App\Http\Controllers\Admin\UserQuickAssignController;
 use App\Http\Controllers\Auth\CompanyInviteAcceptController;
+use App\Http\Controllers\Auth\NewPasswordController; // ← 追加
+
 
 // 招待
 use App\Http\Controllers\Admin\CompanyInvitationController;
@@ -105,6 +107,18 @@ Route::get('/login-intended', function (Request $request) {
     }
     return redirect()->route('login');
 })->name('login.intended');
+
+// ===== Password Reset (Breeze互換) =====
+Route::middleware('guest')->group(function () {
+    // リセット画面（メールの「Reset Password」リンクが来る先）
+    Route::get('/reset-password/{token}', [NewPasswordController::class, 'create'])
+        ->name('password.reset');
+
+    // 新しいパスワードを保存
+    Route::post('/reset-password', [NewPasswordController::class, 'store'])
+        ->name('password.store');
+});
+
 
 // ===== ★ 新規登録前 intended を明示セット =====
 Route::get('/register-intended', function (Request $request) {

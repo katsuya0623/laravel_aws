@@ -7,30 +7,27 @@ use App\Models\Company;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Carbon;
 
 class InviteAcceptController extends Controller
 {
     /** 受諾フォーム表示 */
     public function show(string $token)
     {
-        if (! Schema::hasTable('company_invitations')) {
-            abort(404);
-        }
+        if (! Schema::hasTable('company_invitations')) abort(404);
 
         $inv = $this->findInvitationByToken($token);
-        if (! $inv) {
+        if (! $inv) return redirect()->route('invites.expired');
+
+        // 期限切れ & ステータス検証（pending のみ許可）
+        if ($this->isInvitationExpired($inv) || ! $this->isInvitationPending($inv)) {
             return redirect()->route('invites.expired');
         }
-
-      // ▼ 期限切れ & ステータス検証（pending のみ許可）
-        if ($this->isInvitationExpired($inv) || !$this->isInvitationPending($inv)) {
-            return redirect()->route('invites.expired'); }
 
         $email = $this->resolveInvitationEmail($inv);
 
@@ -67,12 +64,10 @@ class InviteAcceptController extends Controller
         }
 
         $inv = $this->findInvitationByToken($token);
-        if (! $inv) {
-            return redirect()->route('invites.expired');
-        }
+        if (! $inv) return redirect()->route('invites.expired');
 
         // 期限切れ & ステータス検証（pending のみ許可）
-        if ($this->isInvitationExpired($inv) || !$this->isInvitationPending($inv)) {
+        if ($this->isInvitationExpired($inv) || ! $this->isInvitationPending($inv)) {
             return redirect()->route('invites.expired');
         }
 
@@ -105,11 +100,9 @@ class InviteAcceptController extends Controller
 
             // 3) 会社ロール付与
             $user->role = 'company';
-            if (property_exists($user, 'is_active')) {
-                $user->is_active = true;
-            }
+            if (property_exists($user, 'is_active')) $user->is_active = true;
 
-            // ★ company_id を必ず付与（あれば）
+            // company_id が users にあれば保存
             if (Schema::hasColumn('users','company_id')) {
                 $user->company_id = $company->id;
             }
@@ -122,11 +115,10 @@ class InviteAcceptController extends Controller
             // 4) 会社へ確実に紐付け（pivot等）
             $this->attachUserToCompany($company, $user);
 
-            // 5) CompanyProfile を「存在するカラムだけ」で upsert（company_id 優先）
+            // 5) CompanyProfile を upsert（存在するカラムだけ）
             if (Schema::hasTable('company_profiles')) {
                 $cols = Schema::getColumnListing('company_profiles');
 
-                // upsert のキー
                 $key = [];
                 if (in_array('company_id', $cols, true)) {
                     $key['company_id'] = $company->id;
@@ -136,41 +128,28 @@ class InviteAcceptController extends Controller
 
                 if (!empty($key)) {
                     $payload = [];
-                    // 名称カラム
                     if (in_array('company_name', $cols, true)) {
                         $payload['company_name'] = ($company->name ?? $company->company_name ?? null);
                     } elseif (in_array('name', $cols, true)) {
                         $payload['name'] = ($company->name ?? $company->company_name ?? null);
                     }
-                    // 完了フラグ（存在する場合のみ）
-                    if (in_array('is_completed', $cols, true)) {
-                        $payload['is_completed'] = false;
-                    }
-                    // タイムスタンプ（存在する場合のみ）
-                    if (in_array('created_at', $cols, true)) {
-                        $payload['created_at'] = now();
-                    }
-                    if (in_array('updated_at', $cols, true)) {
-                        $payload['updated_at'] = now();
-                    }
+                    if (in_array('is_completed', $cols, true)) $payload['is_completed'] = false;
+                    if (in_array('created_at', $cols, true))   $payload['created_at'] = now();
+                    if (in_array('updated_at', $cols, true))   $payload['updated_at'] = now();
 
                     DB::table('company_profiles')->updateOrInsert($key, $payload);
                 }
             }
 
-            // 6) 招待を accepted に
+            // 6) 招待を accepted に（token はいじらない：NOT NULL でも安全）
             $update = ['status' => 'accepted'];
             if (Schema::hasColumn('company_invitations', 'accepted_at')) {
                 $update['accepted_at'] = now();
             }
-           // 二重受諾防止：token クリア（カラムがある場合）
-            if (Schema::hasColumn('company_invitations', 'token')) {
-                $update['token'] = null;
-            }
             DB::table('company_invitations')->where('id', $inv->id)->update($update);
 
             // 7) そのままログイン
-            auth()->login($user);
+            Auth::login($user);
 
             Log::info('Invite accepted', [
                 'company_id' => $company->id,
@@ -214,9 +193,7 @@ class InviteAcceptController extends Controller
         return null;
     }
 
-    /**
-     * 会社ひも付けを「どれか1つは必ず作る」堅牢実装
-     */
+    /** 会社ひも付けを「どれか1つは必ず作る」堅牢実装 */
     private function attachUserToCompany(Company $company, User $user): void
     {
         $linked = false;
@@ -226,10 +203,14 @@ class InviteAcceptController extends Controller
             && Schema::hasColumn('company_user', 'company_id')
             && Schema::hasColumn('company_user', 'user_id')) {
 
+            $payload = ['company_id' => $company->id, 'user_id' => $user->id];
+            if (Schema::hasColumn('company_user', 'created_at')) $payload['created_at'] = now();
+            if (Schema::hasColumn('company_user', 'updated_at')) $payload['updated_at'] = now();
+
             try {
                 DB::table('company_user')->updateOrInsert(
                     ['company_id' => $company->id, 'user_id' => $user->id],
-                    ['created_at' => now(), 'updated_at' => now()]
+                    $payload
                 );
                 $linked = true;
             } catch (\Throwable $e) {
@@ -248,7 +229,6 @@ class InviteAcceptController extends Controller
             if (Schema::hasTable('company_profiles')) {
                 $cols = Schema::getColumnListing('company_profiles');
 
-                // 既存レコードを company_id / user_id の順で探索
                 if (in_array('company_id', $cols, true)) {
                     $profileId = DB::table('company_profiles')->where('company_id', $company->id)->value('id');
                 }
@@ -256,26 +236,29 @@ class InviteAcceptController extends Controller
                     $profileId = DB::table('company_profiles')->where('user_id', $user->id)->value('id');
                 }
 
-                // 無ければ「存在するカラムだけ」で最小作成
                 if (! $profileId) {
                     $payload = [];
                     if (in_array('user_id', $cols, true))      $payload['user_id'] = $user->id;
                     if (in_array('company_id', $cols, true))   $payload['company_id'] = $company->id;
                     if (in_array('company_name', $cols, true)) $payload['company_name'] = ($company->name ?? $company->company_name ?? null);
-                    elseif (in_array('name', $cols, true))     $payload['name'] = ($company->name ?? $company->company_name ?? null);
+                    elseif (in_array('name', $cols, true))     $payload['name']        = ($company->name ?? $company->company_name ?? null);
                     if (in_array('is_completed', $cols, true)) $payload['is_completed'] = false;
-                    if (in_array('created_at', $cols, true))   $payload['created_at'] = now();
-                    if (in_array('updated_at', $cols, true))   $payload['updated_at'] = now();
+                    if (in_array('created_at', $cols, true))   $payload['created_at']  = now();
+                    if (in_array('updated_at', $cols, true))   $payload['updated_at']  = now();
 
                     $profileId = DB::table('company_profiles')->insertGetId($payload);
                 }
             }
 
             if ($profileId) {
+                $payload = ['company_profile_id' => $profileId, 'user_id' => $user->id];
+                if (Schema::hasColumn('company_user', 'created_at')) $payload['created_at'] = now();
+                if (Schema::hasColumn('company_user', 'updated_at')) $payload['updated_at'] = now();
+
                 try {
                     DB::table('company_user')->updateOrInsert(
                         ['company_profile_id' => $profileId, 'user_id' => $user->id],
-                        ['created_at' => now(), 'updated_at' => now()]
+                        $payload
                     );
                     $linked = true;
                 } catch (\Throwable $e) {
@@ -290,10 +273,11 @@ class InviteAcceptController extends Controller
         // 3) 単一FK: companies.user_id
         if (! $linked && Schema::hasTable('companies') && Schema::hasColumn('companies', 'user_id')) {
             try {
-                DB::table('companies')->where('id', $company->id)->update([
-                    'user_id'    => $user->id,
-                    'updated_at' => now(),
-                ]);
+                $payload = ['user_id' => $user->id];
+                if (Schema::hasColumn('companies', 'updated_at')) {
+                    $payload['updated_at'] = now();
+                }
+                DB::table('companies')->where('id', $company->id)->update($payload);
                 $linked = true;
             } catch (\Throwable $e) {
                 Log::warning('attachUserToCompany: companies.user_id update failed', [
@@ -309,42 +293,28 @@ class InviteAcceptController extends Controller
             ]);
         }
     }
-     /**
-     * 期限切れ判定（expires_at があれば使う）
-     */
+
+    /** 期限切れ判定（expires_at があれば使う） */
     private function isInvitationExpired(object $inv): bool
     {
-        if (property_exists($inv, 'expires_at') && !empty($inv->expires_at)) {
+        if (property_exists($inv, 'expires_at') && ! empty($inv->expires_at)) {
             $exp = $inv->expires_at instanceof \DateTimeInterface
                 ? $inv->expires_at
                 : \Illuminate\Support\Carbon::parse($inv->expires_at);
             return now()->greaterThan($exp);
         }
-        return false; // 期限未設定は期限切れ扱いにしない
+        return false;
     }
 
-    /**
-     * 受諾可能判定（pending 以外はNG／token欠落やaccepted_atありもNG）
-     */
+    /** 受諾可能判定（pending 以外はNG／token欠落やaccepted_atありもNG） */
     private function isInvitationPending(object $inv): bool
     {
         $status = property_exists($inv, 'status') ? strtolower((string) $inv->status) : null;
-        if ($status && $status !== 'pending') {
-            return false;
-        }
+        if ($status && $status !== 'pending') return false;
 
-        // tokenが空なら二重受諾などとみなしてNG（カラムがある場合のみ）
-        if (\Illuminate\Support\Facades\Schema::hasColumn('company_invitations', 'token') && empty($inv->token)) {
-            return false;
-        }
-
-        // 既に受諾済みならNG（カラムがある場合のみ）
-        if (\Illuminate\Support\Facades\Schema::hasColumn('company_invitations', 'accepted_at') && !empty($inv->accepted_at)) {
-            return false;
-        }
+        if (Schema::hasColumn('company_invitations', 'token') && empty($inv->token)) return false;
+        if (Schema::hasColumn('company_invitations', 'accepted_at') && ! empty($inv->accepted_at)) return false;
 
         return true;
     }
 }
-
-

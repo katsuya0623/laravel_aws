@@ -176,7 +176,8 @@ class CompanyResource extends Resource
                         }
 
                         $user   = CompanyResource::ensureUserForEmail($record, $email);
-                        $status = CompanyResource::sendReset($user->email);
+                        // ★ ブローカー固定
+                        $status = Password::broker('users')->sendResetLink(['email' => $user->email]);
 
                         if ($status === Password::RESET_LINK_SENT) {
                             Notification::make()
@@ -257,7 +258,8 @@ class CompanyResource extends Resource
                             return;
                         }
 
-                        $status = Password::sendResetLink(['email' => $user->email]);
+                        // ★ ブローカー固定
+                        $status = Password::broker('users')->sendResetLink(['email' => $user->email]);
 
                         if ($status === Password::RESET_LINK_SENT) {
                             Notification::make()
@@ -444,11 +446,11 @@ class CompanyResource extends Resource
         return $user;
     }
 
-    /** Password リセットを broker 設定に従って送信 */
+    /** Password リセット送信（※未使用：上のアクションで直接 broker('users') を呼んでいます） */
     private static function sendReset(string $email): string
     {
-        $broker = config('auth.defaults.passwords', 'users');
-        return Password::broker($broker)->sendResetLink(['email' => $email]);
+        // ★ 念のためこのヘルパも users 固定
+        return Password::broker('users')->sendResetLink(['email' => $email]);
     }
 
     /** 会社とユーザーの紐付けを安全に作成 */

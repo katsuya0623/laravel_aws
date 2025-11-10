@@ -11,9 +11,19 @@
 
   {{-- ▼ このページは翻訳させない --}}
   <div class="p-6 max-w-4xl space-y-6 notranslate" translate="no">
+    {{-- 成功メッセージ（フラッシュ） --}}
     @if (session('status'))
-    <p class="text-emerald-600 text-sm">{{ session('status') }}</p>
+    <div x-data="{ show: true }"
+      x-show="show"
+      x-transition
+      class="alert alert-success shadow-sm mb-4">
+      <div class="flex-1">
+        <span class="font-medium">{{ session('status') }}</span>
+      </div>
+      <button type="button" class="btn btn-sm btn-ghost" @click="show=false">×</button>
+    </div>
     @endif
+
 
     <form method="POST"
       action="{{ route('user.company.update') }}"

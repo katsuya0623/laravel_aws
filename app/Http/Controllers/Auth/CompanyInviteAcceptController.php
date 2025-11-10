@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Password; // 追加
+use Illuminate\Support\Facades\Auth;     // 追加
 
 class CompanyInviteAcceptController extends Controller
 {
@@ -20,44 +22,34 @@ class CompanyInviteAcceptController extends Controller
      * - User を作成/取得
      * - Company に自動紐付け（pivot/company_user or companies.user_id）
      * - 招待ステータスを accepted に更新
-     * - ログイン or ログイン画面へ誘導
+     * - 初回: パスワード設定画面へ / 既存: 自動ログインして onboarding へ
      */
     public function accept(string $token): RedirectResponse
     {
-        // 1) 招待レコードの特定（カラム名の揺れに強めに対応）
+        // 1) 招待レコードの特定
         if (! Schema::hasTable('company_invitations')) {
             abort(404);
         }
 
         $tokenCols = array_values(array_filter([
             Schema::hasColumn('company_invitations', 'token') ? 'token' : null,
-            Schema::hasColumn('company_invitations', 'uuid') ? 'uuid' : null,
-            Schema::hasColumn('company_invitations', 'code') ? 'code' : null,
+            Schema::hasColumn('company_invitations', 'uuid')  ? 'uuid'  : null,
+            Schema::hasColumn('company_invitations', 'code')  ? 'code'  : null,
         ]));
-
-        if (empty($tokenCols)) {
-            abort(404);
-        }
+        if (empty($tokenCols)) abort(404);
 
         $inv = null;
         foreach ($tokenCols as $col) {
             $inv = DB::table('company_invitations')->where($col, $token)->first();
             if ($inv) break;
         }
-        if (! $inv) {
-            abort(404);
-        }
+        if (! $inv) abort(404);
 
         // 2) company_id / email を解決
-        if (! property_exists($inv, 'company_id') || ! $inv->company_id) {
-            abort(404);
-        }
+        if (! property_exists($inv, 'company_id') || ! $inv->company_id) abort(404);
         $company = Company::find($inv->company_id);
-        if (! $company) {
-            abort(404);
-        }
+        if (! $company) abort(404);
 
-        // email列の候補（存在するものを優先使用）
         $email = null;
         foreach (['email', 'invited_email', 'invitee_email', 'recipient_email'] as $c) {
             if (property_exists($inv, $c) && ! empty($inv->{$c})) {
@@ -69,31 +61,33 @@ class CompanyInviteAcceptController extends Controller
             $email = trim((string) $company->email);
         }
         if (! $email) {
-            // メール不明なら受諾できない
             return redirect()->route('login')->with('error', '招待のメールアドレスが特定できませんでした。');
         }
 
         // 3) ユーザーを作成/取得
         $user = User::firstOrNew(['email' => $email]);
-        if (! $user->exists) {
+        $newlyCreated = ! $user->exists;
+
+        if ($newlyCreated) {
             $user->name     = $company->name ?? 'Company User';
+            // 仮パス（初回設定で即変更するためランダムでOK）
             $user->password = bcrypt(Str::random(24));
-            // 任意ロール付与（spatie/permission を使っている場合）
             if (method_exists($user, 'assignRole')) {
                 try { $user->assignRole('company'); } catch (\Throwable $e) {}
             }
-            $user->role      = $user->role ?? 'company';
-            $user->is_active = true;
+            $user->role = $user->role ?? 'company';
+            if (property_exists($user, 'is_active')) $user->is_active = true;
             $user->save();
+            Log::info('INVITE: user created', ['id' => $user->id, 'email' => $user->email]); // ★追加（デバッグ）
         } else {
-            // 既存でも有効化だけ保証
             if (property_exists($user, 'is_active')) {
                 $user->is_active = true;
                 $user->save();
             }
+            Log::info('INVITE: user exists', ['id' => $user->id, 'email' => $user->email]); // ★追加（デバッグ）
         }
 
-        // 4) 会社へ自動紐付け（pivot/company_user か companies.user_id）
+        // 4) 会社へ自動紐付け
         $this->attachUserToCompany($company, $user);
 
         // 5) 招待状態を accepted に更新
@@ -109,9 +103,19 @@ class CompanyInviteAcceptController extends Controller
             'email'      => $user->email,
         ]);
 
-        // 6) そのままログイン画面にリダイレクト（任意で自動ログインしてもよい）
-        // auth()->login($user); // 自動ログインしたい場合は有効化
-        return redirect()->route('login')->with('status', '企業アカウントが自動で紐づきました。ログインして続行してください。');
+        // 6) 分岐：初回はパスワード設定へ、既存はログインしてオンボーディングへ
+        if ($newlyCreated) {
+            $resetToken = Password::broker()->createToken($user);
+            return redirect()->route('password.reset', [
+                'token' => $resetToken,
+                'email' => $user->email,
+            ])->with('status', 'はじめにパスワードを設定してください。');
+        }
+
+        Auth::login($user);
+        // ★ ここだけルート名を web.php と一致させる
+        return redirect()->route('onboarding.company.edit')
+            ->with('status', 'ログインしました。オンボーディングを続けてください。');
     }
 
     /**

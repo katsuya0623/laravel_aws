@@ -250,7 +250,7 @@ class CompanyProfileController extends Controller
             \Log::warning('auto-link failed', ['error' => $e->getMessage()]);
         }
 
-        return redirect()->route('user.company.edit')->with('status', '企業情報を保存しました。');
+        return back()->with('status', '企業情報を保存しました。');
     }
 
     /** ロゴ保存 */
@@ -468,11 +468,44 @@ class CompanyProfileController extends Controller
 
     /**
      * 分身防止：1ユーザー=1社を強制。pivot最優先で既存を必ず掴む。
+     * 0) プロフィール由来で company を最優先で取得（★追加）
+     * 4) 新規作成直前の再チェック（★追加の安全策）
      */
     private function getOrCreateSingleCompanyForUser(): Company
     {
         $user = Auth::user();
         $uid  = $user?->id;
+
+        // 0) ★ プロフィール → company_id を最優先で掴む
+        if (
+            Schema::hasTable('company_profiles') &&
+            Schema::hasColumn('company_profiles', 'user_id') &&
+            Schema::hasColumn('company_profiles', 'company_id')
+        ) {
+            $cid = \DB::table('company_profiles')
+                ->where('user_id', $uid)
+                ->whereNotNull('company_id')
+                ->orderByDesc('id')
+                ->value('company_id');
+
+            if ($cid && ($c = Company::find($cid))) {
+                if (Schema::hasColumn('companies', 'user_id') && empty($c->user_id)) {
+                    $c->user_id = $uid;
+                    $c->save();
+                }
+                if (
+                    Schema::hasTable('company_user') &&
+                    Schema::hasColumn('company_user', 'user_id') &&
+                    Schema::hasColumn('company_user', 'company_id')
+                ) {
+                    \DB::table('company_user')->updateOrInsert(
+                        ['user_id' => $uid],
+                        ['company_id' => $c->id]
+                    );
+                }
+                return $c;
+            }
+        }
 
         // 1) pivot を最優先
         if (
@@ -535,7 +568,14 @@ class CompanyProfileController extends Controller
             // no-op
         }
 
-        // 4) 無ければ初回のみ作成
+        // 4) 無ければ初回のみ作成 —— の直前で ★再チェック（追加の安全策）
+        if (Schema::hasColumn('companies','user_id')) {
+            if ($c = Company::where('user_id', $uid)->orderByDesc('id')->first()) {
+                return $c;
+            }
+        }
+
+        // 新規作成
         $name = (string) ($user->company_name ?? $user->name ?? '未設定の会社');
         $name = Str::limit(trim($name) !== '' ? $name : '未設定の会社', 30, '');
 
@@ -607,7 +647,7 @@ class CompanyProfileController extends Controller
             if ($ok) $have++;
         }
 
-        // 会社名（カナ）: company_name_kana or kana（profile優先、無ければcompanyの近似列）
+        // 会社名（カナ）
         $need++;
         $kanaOk = false;
         if (Schema::hasColumn('company_profiles','company_name_kana') && filled($p->company_name_kana)) $kanaOk = true;
@@ -620,7 +660,7 @@ class CompanyProfileController extends Controller
         }
         if ($kanaOk) $have++;
 
-        // 従業員数（profile: employees_count/employees → company: employees_count/employees）
+        // 従業員数
         $need++;
         $empOk = false;
         if (Schema::hasColumn('company_profiles','employees_count') && filled($p->employees_count)) $empOk = true;
@@ -632,7 +672,6 @@ class CompanyProfileController extends Controller
         }
         if ($empOk) $have++;
 
-        // 完全一致
         return $need > 0 ? ($have === $need) : false;
     }
 }

@@ -1,16 +1,37 @@
 <x-app-layout>
   <x-slot name="header">
-    <h2 class="font-semibold text-xl">企業情報の登録（初回設定）</h2>
+    <h2 class="font-semibold text-xl">企業情報の登録</h2>
   </x-slot>
 
   @php
-    $contactUrl = \Illuminate\Support\Facades\Route::has('contact') ? route('contact') : url('/contact');
+    // 未定義エラー防止（create() から $company を渡していないケースに対応）
+    $company = $company ?? null;
+
+    $contactUrl = \Illuminate\Support\Facades\Route::has('contact')
+      ? route('contact')
+      : url('/contact');
   @endphp
 
   {{-- ▼ このページは翻訳させない --}}
   <div class="p-6 max-w-4xl space-y-6 notranslate" translate="no">
+
+    {{-- ✅ 成功メッセージ（1つに統一） --}}
     @if (session('status'))
-      <p class="text-emerald-600 text-sm">{{ session('status') }}</p>
+      <div class="alert alert-success shadow-sm mb-4">
+        <span class="font-medium">{{ session('status') }}</span>
+      </div>
+    @endif
+
+    {{-- エラーメッセージ --}}
+    @if ($errors->any())
+      <div class="alert alert-error shadow-sm mb-4">
+        <div class="font-medium mb-1">保存に失敗しました。</div>
+        <ul class="list-disc pl-5 text-sm">
+          @foreach ($errors->all() as $e)
+            <li>{{ $e }}</li>
+          @endforeach
+        </ul>
+      </div>
     @endif
 
     <form method="POST"
@@ -82,7 +103,7 @@
         <p class="text-xs text-gray-500 mt-1">最大 2000 文字</p>
       </div>
 
-      {{-- ロゴ（DBは logo_path に保存）※store では未処理だが送っても無視される --}}
+      {{-- ロゴ（任意） --}}
       <div class="flex items-start gap-6">
         <div class="grow">
           <x-input-label for="logo" value="ロゴ画像（最大10MB / SVG, PNG, JPG, WebP）" />
