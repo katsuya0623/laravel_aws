@@ -112,6 +112,25 @@ return [
             // 'trust_server_certificate' => env('DB_TRUST_SERVER_CERTIFICATE', 'false'),
         ],
 
+    'lightsail' => [
+        'driver' => 'mysql',
+        'host' => env('LS_DB_HOST'),
+        'port' => env('LS_DB_PORT', 3306),
+        'database' => env('LS_DB_DATABASE'),
+        'username' => env('LS_DB_USERNAME'),
+        'password' => env('LS_DB_PASSWORD'),
+        'charset' => 'utf8mb4',
+        'collation' => 'utf8mb4_unicode_ci',
+        'prefix' => '',
+        'prefix_indexes' => true,
+        'strict' => true,
+        'engine' => null,
+        'options' => array_filter([
+            PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'), // SSL使うなら
+        ]),
+    ],
+
+
     ],
 
     /*
