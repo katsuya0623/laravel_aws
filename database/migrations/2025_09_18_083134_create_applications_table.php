@@ -8,6 +8,11 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // --- すでに applications テーブルがある場合は何もしない ---
+        if (Schema::hasTable('applications')) {
+            return;
+        }
+
         Schema::create('applications', function (Blueprint $table) {
             $table->id();
             $table->foreignId('job_id')->constrained()->cascadeOnDelete();

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Users;
 use App\Http\Controllers\Controller;
 use App\Models\Post;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 
 class SponsoredArticleController extends Controller
 {
@@ -17,13 +18,26 @@ class SponsoredArticleController extends Controller
             ?? $request->integer('company_id')
         ) ?: null;
 
-        $posts = Post::query()
-            ->published()
-            // 🔹 スポンサー付きの記事のみ表示
-            ->whereNotNull('sponsor_company_id')
-            // 🔹 特定企業（例：今北産業）のスポンサー記事だけに絞り込み
-            ->when($companyId, fn($q) => $q->where('sponsor_company_id', $companyId))
-            ->latest('published_at')
+        $query = Post::query()->published();
+
+        // ▼ MySQL の posts テーブルに sponsor_company_id があるかどうかで分岐
+        if (Schema::hasColumn('posts', 'sponsor_company_id')) {
+            // カラムがある環境では、今までどおり sponsor_company_id で絞る
+            $query
+                ->whereNotNull('sponsor_company_id')
+                ->when($companyId, fn ($q) => $q->where('sponsor_company_id', $companyId));
+        } else {
+            // カラムが無い環境では is_sponsored フラグを使う or 何も出さない
+            if (Schema::hasColumn('posts', 'is_sponsored')) {
+                $query->where('is_sponsored', 1);
+            } else {
+                // どちらのカラムも無いなら一旦空で返す（500で落ちるよりマシ）
+                $query->whereRaw('1 = 0');
+            }
+        }
+
+        $posts = $query
+            ->orderByDesc('published_at')
             ->paginate(12);
 
         return view('users.sponsored_articles.index', compact('posts'));

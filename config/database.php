@@ -4,7 +4,8 @@ use Illuminate\Support\Str;
 
 return [
 
-    'default' => env('DB_CONNECTION', 'sqlite'),
+    // ★ デフォルトは mysql にしておく
+    'default' => env('DB_CONNECTION', 'mysql'),
 
     'connections' => [
 
@@ -35,7 +36,7 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
-            // ★ false を落とさない array_filter に変更（null だけ除外）
+            // false も通しつつ null だけ落とす
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA', '/etc/ssl/certs/ca-certificates.crt'),
                 PDO::MYSQL_ATTR_SSL_CAPATH => '/etc/ssl/certs',
@@ -96,7 +97,7 @@ return [
             'prefix_indexes' => true,
         ],
 
-        // 任意：別名が必要なら
+        // 任意：Lightsail用の別名（必要ならそのまま残してOK）
         'lightsail' => [
             'driver' => 'mysql',
             'host' => env('LS_DB_HOST'),

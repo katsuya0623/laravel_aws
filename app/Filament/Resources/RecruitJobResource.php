@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\RecruitJobResource\Pages;
 use App\Models\Job;
+use Closure;
 use Filament\Forms\Form;
 use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Section;
@@ -21,7 +22,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Columns\ImageColumn;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\HtmlString;
-use Illuminate\Validation\Rule; // ★ 追加
+use Illuminate\Validation\Rule;
 
 class RecruitJobResource extends Resource
 {
@@ -51,6 +52,7 @@ class RecruitJobResource extends Resource
         $hasIsPublished = self::has('is_published');
 
         return $form->schema([
+            // ───────── 基本情報 ─────────
             Section::make('基本情報')->schema([
                 Grid::make(12)->schema([
                     // タイトル（必須）
@@ -82,14 +84,14 @@ class RecruitJobResource extends Resource
 
                     // 企業（company_name のみの場合は必須）
                     TextInput::make('company_name')
-                        ->label((!self::has('company_id') && self::has('company_name')) ? self::req('企業') : '企業')
+                        ->label((! self::has('company_id') && self::has('company_name')) ? self::req('企業') : '企業')
                         ->maxLength(255)
-                        ->required(fn () => !self::has('company_id') && self::has('company_name'))
+                        ->required(fn () => ! self::has('company_id') && self::has('company_name'))
                         ->validationMessages([
                             'required' => '企業は必須です。',
                             'max'      => '企業名は:max文字以内で入力してください。',
                         ])
-                        ->visible(fn () => !self::has('company_id') && self::has('company_name'))
+                        ->visible(fn () => ! self::has('company_id') && self::has('company_name'))
                         ->columnSpan(4),
                 ]),
 
@@ -138,6 +140,7 @@ class RecruitJobResource extends Resource
                     ->visible(fn () => self::has('image_path')),
             ])->columns(1),
 
+            // ───────── 詳細 ─────────
             Section::make('詳細')->schema([
                 Grid::make(12)->schema([
                     // 勤務地：必須 + 文字列 + 長さ
@@ -183,7 +186,7 @@ class RecruitJobResource extends Resource
                         ])
                         ->native(false)
                         ->required(fn () => self::has('work_style'))
-                        ->rules([Rule::in(['出社','フルリモート','ハイブリッド'])])
+                        ->rules([Rule::in(['出社', 'フルリモート', 'ハイブリッド'])])
                         ->validationMessages([
                             'required' => '働き方は必須です。',
                             'in'       => '働き方の値が不正です。',
@@ -235,34 +238,40 @@ class RecruitJobResource extends Resource
                         ->columnSpan(4),
                 ]),
 
-                // タグ：必須 + スペース区切り（最大10個 / 1つ20文字以内 / 区切り記号禁止）
+                // タグ：必須 + スペース区切り
                 TextInput::make('tags')
                     ->label(self::has('tags') ? self::req('タグ（スペース区切り）') : 'タグ（スペース区切り）')
                     ->placeholder('例：完全週休2日 服装自由 フレックス')
                     ->required(fn () => self::has('tags'))
                     ->maxLength(255)
-                    ->rules([
-                        'required',
-                        'string',
-                        function (string $attribute, $value, \Closure $fail) {
-                            $raw  = trim((string) $value);
-                            if ($raw === '') {
-                                $fail('タグを入力してください。'); return;
+                    // ここからバリデーション
+                    ->rule('string')
+                    ->rule(function (string $attribute, $value, Closure $fail) {
+                        $raw = trim((string) $value);
+
+                        if ($raw === '') {
+                            $fail('タグを入力してください。');
+                            return;
+                        }
+
+                        $tags = preg_split('/\s+/u', $raw);
+
+                        if (count($tags) > 10) {
+                            $fail('タグは最大10個までです。');
+                            return;
+                        }
+
+                        foreach ($tags as $t) {
+                            if (mb_strlen($t) > 20) {
+                                $fail("タグ「{$t}」が長すぎます（最大20文字）。");
+                                return;
                             }
-                            $tags = preg_split('/\s+/u', $raw);
-                            if (count($tags) > 10) {
-                                $fail('タグは最大10個までです。'); return;
+                            if (preg_match('/[,\|、。]/u', $t)) {
+                                $fail("タグ「{$t}」に区切り記号は使えません。スペースで区切ってください。");
+                                return;
                             }
-                            foreach ($tags as $t) {
-                                if (mb_strlen($t) > 20) {
-                                    $fail("タグ「{$t}」が長すぎます（最大20文字）。"); return;
-                                }
-                                if (preg_match('/[,\|、。]/u', $t)) {
-                                    $fail("タグ「{$t}」に区切り記号は使えません。スペースで区切ってください。"); return;
-                                }
-                            }
-                        },
-                    ])
+                        }
+                    })
                     // 保存時：空白を正規化して1本化
                     ->dehydrateStateUsing(function ($state) {
                         $tags = array_filter(preg_split('/\s+/u', trim((string) $state)));
@@ -271,6 +280,7 @@ class RecruitJobResource extends Resource
                     ->visible(fn () => self::has('tags')),
             ])->columns(1),
 
+            // ───────── 公開設定 ─────────
             Section::make('公開設定')->schema([
                 Grid::make(12)->schema([
                     ToggleButtons::make('status')
@@ -294,7 +304,7 @@ class RecruitJobResource extends Resource
                         ->options([0 => '下書き', 1 => '公開'])
                         ->colors([0 => 'gray', 1 => 'success'])
                         ->inline()
-                        ->visible(fn () => !$hasStatus && $hasIsPublished)
+                        ->visible(fn () => ! $hasStatus && $hasIsPublished)
                         ->columnSpan(6),
 
                     DateTimePicker::make('published_at')
@@ -309,9 +319,9 @@ class RecruitJobResource extends Resource
                     ->maxLength(190)
                     ->helperText('保存時に空なら「title」から自動生成します。')
                     ->validationMessages([
-                        'max'       => 'スラッグは:max文字以内で入力してください。',
-                        'alpha_dash'=> 'スラッグは英数字・ハイフン・アンダースコアのみ使用できます。',
-                        'unique'    => 'このスラッグは既に使用されています。',
+                        'max'        => 'スラッグは:max文字以内で入力してください。',
+                        'alpha_dash' => 'スラッグは英数字・ハイフン・アンダースコアのみ使用できます。',
+                        'unique'     => 'このスラッグは既に使用されています。',
                     ])
                     ->visible(fn () => self::has('slug')),
             ])->columns(1),
@@ -337,7 +347,7 @@ class RecruitJobResource extends Resource
                 TextColumn::make('company.name')->label('企業')->toggleable()->sortable()
                     ->visible(fn () => self::has('company_id')),
                 TextColumn::make('company_name')->label('企業')->toggleable()->sortable()
-                    ->visible(fn () => !self::has('company_id') && self::has('company_name')),
+                    ->visible(fn () => ! self::has('company_id') && self::has('company_name')),
                 TextColumn::make('location')->label('勤務地')->toggleable()
                     ->visible(fn () => self::has('location')),
                 TextColumn::make('salary_from')->label('下限')->numeric()->toggleable()
@@ -348,9 +358,16 @@ class RecruitJobResource extends Resource
                     ->visible(fn () => self::has('salary_unit')),
                 $hasStatus
                     ? Tables\Columns\BadgeColumn::make('status')->label('状態')
-                        ->colors(['secondary' => 'draft', 'success' => 'published', 'danger' => 'closed'])
+                        ->colors([
+                            'secondary' => 'draft',
+                            'success'   => 'published',
+                            'danger'    => 'closed',
+                        ])
                     : Tables\Columns\BadgeColumn::make('is_published')->label('公開')
-                        ->colors(['secondary' => 0, 'success' => 1])
+                        ->colors([
+                            'secondary' => 0,
+                            'success'   => 1,
+                        ])
                         ->formatStateUsing(fn ($s) => $s ? '公開' : '下書き'),
                 TextColumn::make('published_at')->label('公開')->dateTime('Y-m-d H:i')->sortable()
                     ->visible(fn () => self::has('published_at')),
@@ -358,11 +375,18 @@ class RecruitJobResource extends Resource
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('status')->label('状態')
-                    ->options(['draft'=>'下書き','published'=>'公開','closed'=>'募集停止'])
+                    ->options([
+                        'draft'     => '下書き',
+                        'published' => '公開',
+                        'closed'    => '募集停止',
+                    ])
                     ->visible(fn () => $hasStatus),
                 Tables\Filters\SelectFilter::make('is_published')->label('公開')
-                    ->options([1 => '公開', 0 => '下書き'])
-                    ->visible(fn () => !$hasStatus && $hasIsPublished),
+                    ->options([
+                        1 => '公開',
+                        0 => '下書き',
+                    ])
+                    ->visible(fn () => ! $hasStatus && $hasIsPublished),
             ])
             ->actions([
                 Tables\Actions\EditAction::make()->label('編集'),
@@ -370,7 +394,7 @@ class RecruitJobResource extends Resource
             ->bulkActions([
                 Tables\Actions\DeleteBulkAction::make()->label('削除'),
             ])
-            ->defaultSort('id','desc');
+            ->defaultSort('id', 'desc');
     }
 
     public static function getPages(): array

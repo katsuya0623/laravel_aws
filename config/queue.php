@@ -34,9 +34,11 @@ return [
             'driver' => 'sync',
         ],
 
+        // ★ database キュー
+        // connection が null の場合 = DB_CONNECTION（mysql）を自動的に使う
         'database' => [
             'driver' => 'database',
-            'connection' => env('DB_QUEUE_CONNECTION'),
+            'connection' => env('DB_QUEUE_CONNECTION'),   // null なら default DB を使用
             'table' => env('DB_QUEUE_TABLE', 'jobs'),
             'queue' => env('DB_QUEUE', 'default'),
             'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 90),
@@ -86,7 +88,8 @@ return [
     */
 
     'batching' => [
-        'database' => env('DB_CONNECTION', 'sqlite'),
+        // ★ sqlite → mysql に統一
+        'database' => env('DB_CONNECTION', 'mysql'),
         'table' => 'job_batches',
     ],
 
@@ -95,9 +98,9 @@ return [
     | Failed Queue Jobs
     |--------------------------------------------------------------------------
     |
-    | These options configure the behavior of failed queue job logging so you
-    | can control how and where failed jobs are stored. Laravel ships with
-    | support for storing failed jobs in a simple file or in a database.
+    | Configure how and where failed queue jobs should be logged. Laravel
+    | provides options for storing failed jobs in simple files or using
+    | a database with UUIDs for job identifiers.
     |
     | Supported drivers: "database-uuids", "dynamodb", "file", "null"
     |
@@ -105,7 +108,8 @@ return [
 
     'failed' => [
         'driver' => env('QUEUE_FAILED_DRIVER', 'database-uuids'),
-        'database' => env('DB_CONNECTION', 'sqlite'),
+        // ★ sqlite → mysql に修正
+        'database' => env('DB_CONNECTION', 'mysql'),
         'table' => 'failed_jobs',
     ],
 
