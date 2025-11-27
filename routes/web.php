@@ -81,7 +81,7 @@ Route::middleware(['auth:web', 'role:company'])->group(function () {
     Route::get('/company/edit', [CompanyEditController::class, 'edit'])->name('user.company.edit');
 
     // 更新（/company/edit に POST or PATCH）
-    Route::match(['post','patch'], '/company/edit', [CompanyEditController::class, 'update'])
+    Route::match(['post', 'patch'], '/company/edit', [CompanyEditController::class, 'update'])
         ->name('user.company.update');
 
     // 互換：旧フォームが /company/update に POST していても動くように
@@ -155,10 +155,11 @@ Route::prefix('recruit_jobs')->group(function () {
             ->whereNumber('job')->name('front.jobs.destroy');
     });
 
-    // ★お気に入り→応募へ（公開）
-    Route::post('/{slugOrId}/favorite-apply', [FavoriteController::class, 'favoriteAndApply'])
-        ->where('slugOrId', '^([A-Za-z0-9\-]+|\d+)$')
-        ->name('front.jobs.favorite_apply');
+ // ★お気に入り→応募へ（公開）
+Route::match(['get', 'post'], '/{slugOrId}/favorite-apply', [FavoriteController::class, 'favoriteAndApply'])
+    ->where('slugOrId', '^([A-Za-z0-9\-]+|\d+)$')
+    ->name('front.jobs.favorite_apply');
+
 
     // =========================
     // 新：応募フォーム（別ページ）
@@ -184,10 +185,19 @@ Route::prefix('recruit_jobs')->group(function () {
 
     // お気に入り（エンドユーザー専用）
     Route::middleware(['auth:web', 'role:enduser'])->group(function () {
-        Route::post('/{jobId}/favorite',        [FavoriteController::class, 'store'])->whereNumber('jobId')->name('favorites.store');
-        Route::delete('/{jobId}/favorite',      [FavoriteController::class, 'destroy'])->whereNumber('jobId')->name('favorites.destroy');
-        Route::post('/{jobId}/favorite/toggle', [FavoriteController::class, 'toggle'])->whereNumber('jobId')->name('favorites.toggle');
+        Route::post('/{job}/favorite',        [FavoriteController::class, 'store'])
+            ->whereNumber('job')
+            ->name('favorites.store');
+
+        Route::delete('/{job}/favorite',      [FavoriteController::class, 'destroy'])
+            ->whereNumber('job')
+            ->name('favorites.destroy');
+
+        Route::post('/{job}/favorite/toggle', [FavoriteController::class, 'toggle'])
+            ->whereNumber('job')
+            ->name('favorites.toggle');
     });
+
 
     // ★ 動的ルートは最後。create を除外して衝突回避
     Route::get('/{slugOrId}', [FrontJobController::class, 'show'])
@@ -252,7 +262,7 @@ if (! \Illuminate\Support\Facades\Route::has('admin.login')) {
     });
 }
 // ★ 管理者ログイン済みで /admin を踏んだら /admin/dashboard へ
-Route::middleware('auth:admin')->get('/admin', fn () => redirect('/admin/dashboard'));
+Route::middleware('auth:admin')->get('/admin', fn() => redirect('/admin/dashboard'));
 
 /* ------------------------------------------------------------------
 | Admin（auth:admin）

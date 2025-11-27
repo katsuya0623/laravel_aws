@@ -1,6 +1,7 @@
 <?php
 return [
   'hot_file'   => storage_path('framework/vite.hot'),
-  'build_path' => 'web/build',      // ← 出力先に合わせる
+  // public_path('build') → /opt/bitnami/laravel/public/build を見る
+  'build_path' => 'build',
   'manifest'   => 'manifest.json',
 ];

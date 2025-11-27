@@ -16,11 +16,12 @@
     <span class="js-fav-count text-gray-600 ml-1">({{ $favCount }})</span>
   </button>
 @else
-  <a href="{{ route('login') }}"
+  <a href="{{ url("/recruit_jobs/{$job->slug}/favorite-apply") }}"
      class="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md border border-gray-200 bg-white hover:bg-gray-50">
      ☆ 追加（ログイン）
   </a>
 @endif
+
 
 @once
   @push('scripts')

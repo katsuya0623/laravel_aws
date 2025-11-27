@@ -63,21 +63,31 @@ class FavoriteController extends Controller
     {
         // slug でも id でも取得可
         $job = Job::query()
-            ->when(is_numeric($slugOrId), fn ($q) => $q->where('id', $slugOrId),
-                                 fn ($q) => $q->where('slug', $slugOrId))
+            ->when(
+                is_numeric($slugOrId),
+                fn($q) => $q->where('id', $slugOrId),
+                fn($q) => $q->where('slug', $slugOrId)
+            )
             ->firstOrFail();
 
-        // 未ログイン → 認証へ。戻り先は 応募ゲート?autofav=1
+        // 未ログイン → ログインへ。戻り先は 求人詳細ページ ?autofav=1
         if (!auth()->check()) {
-            $redirectTo = route('front.jobs.apply.gate', ['job' => $job->slug, 'autofav' => 1]);
-            return redirect()->route('login.intended', ['redirect' => $redirectTo]);
-            // 新規登録優先にしたければ ↓ に差し替え
-            // return redirect()->route('register.intended', ['redirect' => $redirectTo]);
+            $redirectTo = route('front.jobs.show', [
+                'slugOrId' => $job->slug, // ★ここを job → slugOrId に修正
+                'autofav'  => 1,
+            ]);
+
+            return redirect()->route('login.intended', [
+                'redirect' => $redirectTo,
+            ]);
         }
 
-        // ログイン済み → 即付与して応募ゲートへ
+        // ログイン済み → 即お気に入り登録
         $request->user()->favorites()->syncWithoutDetaching([$job->id]);
 
-        return redirect()->route('front.jobs.apply.gate', ['job' => $job->slug]);
+        // 求人詳細に戻る
+        return redirect()->route('front.jobs.show', [
+            'slugOrId' => $job->slug, // ★ここも job → slugOrId
+        ]);
     }
 }

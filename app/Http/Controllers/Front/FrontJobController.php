@@ -33,9 +33,9 @@ class FrontJobController extends Controller
                 $jobs->where(function ($qq) use ($kw, $table) {
                     $like = "%{$kw}%";
                     $qq->where("$table.title", 'like', $like)
-                       ->orWhere("$table.description", 'like', $like)
-                       ->orWhere("$table.location", 'like', $like)
-                       ->orWhere("$table.tags", 'like', $like);
+                        ->orWhere("$table.description", 'like', $like)
+                        ->orWhere("$table.location", 'like', $like)
+                        ->orWhere("$table.tags", 'like', $like);
 
                     if (Schema::hasColumn($table, 'company_name')) {
                         $qq->orWhere("$table.company_name", 'like', $like);
@@ -61,14 +61,15 @@ class FrontJobController extends Controller
     }
 
     /** 求人詳細（slug or id） */
-    public function show(string $slugOrId)
+    public function show(Request $request, string $slugOrId)
     {
         $table = (new Job)->getTable();
 
-        // ★ 企業プロフィールが完了済みの企業のみ表示（スキーマに応じて安全にJOIN）
+        // ★ 企業プロフィールが完了済みの企業のみ表示
         $jobQuery = $this->joinCompletedCompanyProfile(Job::query()->with('company'), $table);
 
         $job = $jobQuery
+            ->withCount('favoredBy')   // ← お気に入り数を最新にするため追加
             ->when(
                 is_numeric($slugOrId),
                 fn($q) => $q->where("$table.id", $slugOrId),
@@ -76,10 +77,22 @@ class FrontJobController extends Controller
             )
             ->firstOrFail();
 
+        /**
+         * ★ autofav=1 ＋ ログイン済み → 自動でお気に入り登録
+         * favorite-apply → login.intended → /recruit_jobs/{slug}?autofav=1 で戻るパターン
+         */
+        if (auth()->check() && $request->boolean('autofav')) {
+            $request->user()->favorites()->syncWithoutDetaching([$job->id]);
+
+            // カウントを更新
+            $job->loadCount('favoredBy');
+        }
+
         return view()->exists('front.jobs.show')
             ? view('front.jobs.show', compact('job'))
             : view('front.jobs.index', ['jobs' => collect([$job]), 'q' => null, 'status' => null]);
     }
+
 
     /** 作成フォーム（企業限定） */
     public function create()
@@ -304,14 +317,14 @@ class FrontJobController extends Controller
             'company_id'      => ['required', 'integer'], // 許可チェックは呼び出し側で Rule::in を付与
             'summary'         => ['required', 'string'],
 
-            'employment_type' => ['required', 'string', Rule::in(['正社員','契約社員','アルバイト','業務委託','インターン'])],
+            'employment_type' => ['required', 'string', Rule::in(['正社員', '契約社員', 'アルバイト', '業務委託', 'インターン'])],
             'salary_unit'     => ['required', 'string', Rule::in(['年収', '月収', '時給'])],
 
             'company_name'    => ['nullable', 'string', 'max:255'],
 
             // ★ 必須化した項目
             'location'        => ['required', 'string', 'max:255'],
-            'work_style'      => ['required', 'string', Rule::in(['出社','フルリモート','ハイブリッド'])],
+            'work_style'      => ['required', 'string', Rule::in(['出社', 'フルリモート', 'ハイブリッド'])],
 
             'salary_from'     => ['nullable', 'integer', 'min:0'],
             'salary_to'       => ['nullable', 'integer', 'min:0', 'gte:salary_from'],
@@ -382,12 +395,12 @@ class FrontJobController extends Controller
             if ($cpNameCol !== null) {
                 // エイリアスを付けて pluck できるようにする
                 $names = DB::table('company_user as cu')
-                    ->join($cpTable.' as cp', 'cp.id', '=', 'cu.company_profile_id')
+                    ->join($cpTable . ' as cp', 'cp.id', '=', 'cu.company_profile_id')
                     ->where('cu.user_id', $userId)
-                    ->select('cp.'.$cpNameCol.' as cname')
+                    ->select('cp.' . $cpNameCol . ' as cname')
                     ->pluck('cname')
-                    ->filter(fn ($v) => is_string($v) && $v !== '')
-                    ->map(fn ($v) => trim($v))
+                    ->filter(fn($v) => is_string($v) && $v !== '')
+                    ->map(fn($v) => trim($v))
                     ->unique()
                     ->values();
             }
@@ -395,7 +408,7 @@ class FrontJobController extends Controller
             if ($names->isNotEmpty()) {
                 $idsFromNames = Company::whereIn('name', $names)
                     ->pluck('id')
-                    ->map(fn ($v) => (int) $v)
+                    ->map(fn($v) => (int) $v)
                     ->all();
                 $ids = array_merge($ids, $idsFromNames);
             }
@@ -415,7 +428,7 @@ class FrontJobController extends Controller
                 $own = DB::table($companyTable)
                     ->where($ownerCol, $userId)
                     ->pluck('id')
-                    ->map(fn ($v) => (int) $v)
+                    ->map(fn($v) => (int) $v)
                     ->all();
                 if (!empty($own)) {
                     $ids = array_merge($ids, $own);
@@ -466,7 +479,7 @@ class FrontJobController extends Controller
 
             if ($ownerCol) {
                 $qb = $qb->leftJoin("$companyTable as c", "c.id", "=", "$jobTable.company_id")
-                         ->leftJoin("$cpTbl as cp", "cp.user_id", "=", "c.$ownerCol");
+                    ->leftJoin("$cpTbl as cp", "cp.user_id", "=", "c.$ownerCol");
             } else {
                 // companies にオーナー列が無いなら諦める
                 return $qb->select("$jobTable.*");
