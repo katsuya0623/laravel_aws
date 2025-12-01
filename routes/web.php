@@ -155,10 +155,10 @@ Route::prefix('recruit_jobs')->group(function () {
             ->whereNumber('job')->name('front.jobs.destroy');
     });
 
- // ★お気に入り→応募へ（公開）
-Route::match(['get', 'post'], '/{slugOrId}/favorite-apply', [FavoriteController::class, 'favoriteAndApply'])
-    ->where('slugOrId', '^([A-Za-z0-9\-]+|\d+)$')
-    ->name('front.jobs.favorite_apply');
+    // ★お気に入り→応募へ（公開）
+    Route::match(['get', 'post'], '/{slugOrId}/favorite-apply', [FavoriteController::class, 'favoriteAndApply'])
+        ->where('slugOrId', '^([A-Za-z0-9\-]+|\d+)$')
+        ->name('front.jobs.favorite_apply');
 
 
     // =========================
@@ -324,9 +324,16 @@ Route::prefix('admin')->middleware(['auth:admin'])->name('admin.')->group(functi
             : url("/admin/recruit_jobs/{$job}/edit"));
     })->whereNumber('job')->name('jobs.edit');
 
-    // 応募一覧（Blade 版）
-    Route::get('applications',        [ApplicationsController::class, 'index'])->name('applications.index');
-    Route::get('applications/export', [ApplicationsController::class, 'export'])->name('applications.export');
+    // 応募一覧（Filament に委譲）
+    Route::get('__alias/filament-applications', function () {
+        // Filament の ApplicationResource 一覧にリダイレクト
+        return redirect()->route('filament.admin.resources.applications.index');
+    })->name('applications.index');
+
+    // CSV エクスポートは今まで通りコントローラで処理
+    Route::get('applications/export', [ApplicationsController::class, 'export'])
+        ->name('applications.export');
+
 
     // アップロード疎通テスト
     Route::match(['get', 'post'], 'posts/__upload-test', function (Request $r) {
@@ -349,11 +356,6 @@ Route::middleware(['web', 'auth:web'])->group(function () {
         ->name('onboarding.company.update');
 });
 
-/* ===== Filament 暫定エイリアス（保険） ===== */
-if (!Route::has('filament.admin.resources.applications.index')) {
-    Route::redirect('/admin/__alias/filament-applications', '/admin/applications', 302)
-        ->name('filament.admin.resources.applications.index');
-}
 
 /* ★Filament互換のログアウト／ログイン ルートを救済 */
 if (!Route::has('filament.admin.auth.logout')) {

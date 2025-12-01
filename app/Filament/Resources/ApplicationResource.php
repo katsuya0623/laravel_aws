@@ -9,108 +9,182 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Database\Eloquent\Builder;
+use App\Filament\Resources\RecruitJobResource;
+
 
 class ApplicationResource extends Resource
 {
     protected static ?string $model = Application::class;
 
-    protected static ?string $navigationGroup = 'Management';
-    protected static ?string $navigationIcon  = 'heroicon-o-document-text';
-    protected static ?string $navigationLabel = '応募一覧';
-    protected static ?string $modelLabel      = '応募';
-    protected static ?string $pluralModelLabel= '応募';
-
-    protected static function has(string $col): bool
-    {
-        return Schema::hasColumn((new Application)->getTable(), $col);
-    }
+    // 左メニュー＆タイトル周り
+    protected static ?string $navigationIcon   = 'heroicon-o-inbox-stack';
+    protected static ?string $navigationLabel  = '応募一覧';
+    protected static ?string $pluralModelLabel = '応募一覧（管理者）';
+    protected static ?string $navigationGroup  = 'Management'; // 企業一覧と合わせる
 
     public static function form(Form $form): Form
     {
-        return $form->schema([
-            Forms\Components\TextInput::make('name')->label('氏名')->required()->visible(fn()=>self::has('name')),
-            Forms\Components\TextInput::make('email')->label('メール')->email()->visible(fn()=>self::has('email')),
-            Forms\Components\TextInput::make('phone')->label('電話')->visible(fn()=>self::has('phone')),
-            Forms\Components\Select::make('job_id')->label('求人')
-                ->relationship('job', 'title')->searchable()->preload()
-                ->visible(fn()=>self::has('job_id')),
-            Forms\Components\FileUpload::make('resume_path')->label('履歴書')
-                ->directory('resumes')->downloadable()->visible(fn()=>self::has('resume_path')),
-            Forms\Components\Textarea::make('note')->label('メモ')->rows(5)
-                ->visible(fn()=>self::has('note')),
-        ])->columns(2);
+        // 応募は閲覧専用なら空でOK
+        return $form->schema([]);
     }
 
     public static function table(Table $table): Table
     {
         return $table
+            // === 元の Blade と同じ並び＆内容 ===
             ->columns([
-                Tables\Columns\TextColumn::make('id')->label('ID')->sortable(),
-                Tables\Columns\TextColumn::make('created_at')->label('応募日時')->dateTime('Y-m-d H:i')->sortable(),
-                Tables\Columns\TextColumn::make('job.title')->label('応募求人')->toggleable()
-                    ->visible(fn()=>self::has('job_id')),
-                Tables\Columns\TextColumn::make('name')->label('氏名')->searchable()->visible(fn()=>self::has('name')),
-                Tables\Columns\TextColumn::make('email')->label('メール')->toggleable()->visible(fn()=>self::has('email')),
-                Tables\Columns\TextColumn::make('phone')->label('電話')->toggleable()->visible(fn()=>self::has('phone')),
+                Tables\Columns\TextColumn::make('id')
+                    ->label('ID')
+                    ->sortable(),
+
+                Tables\Columns\TextColumn::make('created_at')
+                    ->label('応募日時')
+                    ->dateTime('Y-m-d H:i')
+                    ->sortable(),
+
+                Tables\Columns\TextColumn::make('name')
+                    ->label('応募者')
+                    ->default('—')
+                    ->searchable(),
+
+                Tables\Columns\TextColumn::make('email')
+                    ->label('メール')
+                    ->default('—')
+                    ->searchable(),
+
+                Tables\Columns\TextColumn::make('job.title')
+                    ->label('求人')
+                    ->placeholder('（削除済み求人）')
+                    ->url(function ($record) {
+                        // job が無い場合はリンクなし
+                        if (! $record->job) {
+                            return null;
+                        }
+
+                        // slug があれば slug、なければ ID を使う
+                        $slugOrId = $record->job->slug ?? $record->job_id;
+
+                        // フロントの求人詳細ページ
+                        return route('front.jobs.show', ['slugOrId' => $slugOrId]);
+                    })
+                    ->openUrlInNewTab(), // ← カンマにする
+
+
+
+                Tables\Columns\TextColumn::make('job_id')
+                    ->label('求人ID')
+                    ->default('—'),
+
+                Tables\Columns\BadgeColumn::make('status')
+                    ->label('ステータス')
+                    ->colors([
+                        'primary' => 'new',
+                        'gray'    => 'viewed',
+                        'warning' => 'interview',
+                        'success' => 'offer',
+                        'danger'  => 'rejected',
+                        'info'    => 'withdrawn',
+                    ])
+                    ->formatStateUsing(fn(?string $state) => $state ?: '—'),
             ])
-            ->filters([])
-            ->actions([
-                Tables\Actions\ViewAction::make()->label('詳細'),
-                Tables\Actions\EditAction::make()->label('編集'),
+
+            // === 元フォームの「絞り込み」を Filament の Filters に移植 ===
+            ->filters([
+                // キーワード：応募者名 / メール / 求人タイトル
+                Tables\Filters\Filter::make('q')
+                    ->label('キーワード')
+                    ->form([
+                        Forms\Components\TextInput::make('q')
+                            ->placeholder('応募者名 / メール / 求人タイトル'),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        $keyword = $data['q'] ?? null;
+                        if (! filled($keyword)) {
+                            return $query;
+                        }
+
+                        return $query->where(function (Builder $q) use ($keyword) {
+                            $q->where('name', 'like', "%{$keyword}%")
+                                ->orWhere('email', 'like', "%{$keyword}%")
+                                ->orWhereHas('job', function (Builder $q2) use ($keyword) {
+                                    $q2->where('title', 'like', "%{$keyword}%");
+                                });
+                        });
+                    }),
+
+                // ステータス（元の $statusOptions 相当）
+                Tables\Filters\SelectFilter::make('status')
+                    ->label('ステータス')
+                    ->options([
+                        ''          => 'すべて',
+                        'new'       => 'new',
+                        'viewed'    => 'viewed',
+                        'interview' => 'interview',
+                        'offer'     => 'offer',
+                        'rejected'  => 'rejected',
+                        'withdrawn' => 'withdrawn',
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        $status = $data['value'] ?? null;
+                        if ($status === null || $status === '') {
+                            return $query;
+                        }
+
+                        return $query->where('status', $status);
+                    }),
+
+                // 求人ID
+                Tables\Filters\Filter::make('job_id')
+                    ->label('求人ID')
+                    ->form([
+                        Forms\Components\TextInput::make('job_id')->numeric(),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        if (! filled($data['job_id'] ?? null)) {
+                            return $query;
+                        }
+
+                        return $query->where('job_id', $data['job_id']);
+                    }),
+
+                // 会社ID（applications テーブルに company_id がある想定）
+                Tables\Filters\Filter::make('company_id')
+                    ->label('会社ID')
+                    ->form([
+                        Forms\Components\TextInput::make('company_id')->numeric(),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        if (! filled($data['company_id'] ?? null)) {
+                            return $query;
+                        }
+
+                        return $query->where('company_id', $data['company_id']);
+                    }),
             ])
-            ->bulkActions([
-                Tables\Actions\DeleteBulkAction::make()->label('削除'),
-            ])
-            ->defaultSort('id','desc');
+
+            // 行アクションはいったん無し（閲覧専用にしたい前提）
+            ->actions([])
+
+            // 一括アクションも無し
+            ->bulkActions([])
+
+            // 並び順：応募日時の新しい順
+            ->defaultSort('created_at', 'desc');
+    }
+
+    public static function getRelations(): array
+    {
+        return [];
     }
 
     public static function getPages(): array
     {
         return [
-            'index'  => Pages\ListApplications::route('/'),
-            'create' => Pages\CreateApplication::route('/create'),
-            'edit'   => Pages\EditApplication::route('/{record}/edit'),
-            'view'   => Pages\ViewApplication::route('/{record}'),
+            'index' => Pages\ListApplications::route('/'),
+            // create / edit は使わないならコメントアウト
+            // 'create' => Pages\CreateApplication::route('/create'),
+            // 'edit' => Pages\EditApplication::route('/{record}/edit'),
         ];
     }
-}
-
-namespace App\Filament\Resources\ApplicationResource\Pages;
-
-use App\Filament\Resources\ApplicationResource;
-use Filament\Actions;
-use Filament\Resources\Pages\ListRecords;
-use Filament\Resources\Pages\CreateRecord;
-use Filament\Resources\Pages\EditRecord;
-use Filament\Resources\Pages\ViewRecord;
-
-class ListApplications extends ListRecords
-{
-    protected static string $resource = ApplicationResource::class;
-    protected function getHeaderActions(): array
-    {
-        return [ Actions\CreateAction::make()->label('手動追加') ];
-    }
-}
-
-class CreateApplication extends CreateRecord
-{
-    protected static string $resource = ApplicationResource::class;
-    protected function getCreatedNotificationTitle(): ?string { return '応募を追加しました'; }
-}
-
-class EditApplication extends EditRecord
-{
-    protected static string $resource = ApplicationResource::class;
-    protected function getHeaderActions(): array
-    {
-        return [ Actions\DeleteAction::make()->label('削除') ];
-    }
-    protected function getSavedNotificationTitle(): ?string { return '保存しました'; }
-}
-
-class ViewApplication extends ViewRecord
-{
-    protected static string $resource = ApplicationResource::class;
 }
