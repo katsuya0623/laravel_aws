@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="ja">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -26,118 +27,270 @@
       --c-accent: #6d28d9;
     }
 
-    * { box-sizing: border-box }
+    * {
+      box-sizing: border-box
+    }
 
-    html, body {
-      margin: 0; padding: 0; background: var(--c-bg); color: var(--c-text);
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--c-bg);
+      color: var(--c-text);
       font: 14px/1.6 -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
     }
 
-    header.site-header { border-bottom: 1px solid var(--c-border); background: #fff; }
-    .container { max-width: 980px; margin: 0 auto; padding: 0 16px; }
-    .header-inner { display:flex; align-items:center; justify-content:space-between; height:56px; gap:16px; }
-    .brand { display:flex; align-items:center; gap:10px; font-weight:700; }
-    .brand a { color:inherit; text-decoration:none }
-
-    .nav { display:flex; align-items:center; gap:16px; font-size:13px; }
-    .nav a.link { color:#374151; text-decoration:none }
-    .nav a.link:hover { color:var(--c-accent); text-decoration:none }
-
-    .btn-register{
-      background:#C23A41; color:#fff; border-radius:9999px;
-      padding:.375rem .875rem; font-size:.75rem; font-weight:600;
-      display:inline-flex; align-items:center; box-shadow:0 1px 2px rgba(0,0,0,.04);
-      transition:background-color .15s ease, opacity .15s ease;
-      text-decoration:none; border:1px solid transparent;
+    header.site-header {
+      border-bottom: 1px solid var(--c-border);
+      background: #fff;
     }
-    .btn-register:hover{ background:#a53036; color:#fff; text-decoration:none }
-    .btn-register:focus{ outline:2px solid rgba(194,58,65,.35); outline-offset:2px }
 
-    main.site-main
-    .toolbar{ display:flex; gap:12px; align-items:center; color:var(--c-sub); font-size:12px; margin-bottom:12px; }
+    .container {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 0 16px;
+    }
+
+    .header-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 56px;
+      gap: 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+    }
+
+    .brand a {
+      color: inherit;
+      text-decoration: none
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 13px;
+    }
+
+    .nav a.link {
+      color: #374151;
+      text-decoration: none
+    }
+
+    .nav a.link:hover {
+      color: var(--c-accent);
+      text-decoration: none
+    }
+
+    .btn-register {
+      background: #C23A41;
+      color: #fff;
+      border-radius: 9999px;
+      padding: .375rem .875rem;
+      font-size: .75rem;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
+      transition: background-color .15s ease, opacity .15s ease;
+      text-decoration: none;
+      border: 1px solid transparent;
+    }
+
+    .btn-register:hover {
+      background: #a53036;
+      color: #fff;
+      text-decoration: none
+    }
+
+    .btn-register:focus {
+      outline: 2px solid rgba(194, 58, 65, .35);
+      outline-offset: 2px
+    }
+
+    main.site-main .toolbar {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      color: var(--c-sub);
+      font-size: 12px;
+      margin-bottom: 12px;
+    }
 
     /* ▼ フッター（ダーク） */
-    footer.site-footer{
-      background:#111111;
-      color:#d1d5db;
-      border-top:1px solid #27272a;
-      padding:48px 0;
-    }
-    .site-footer .footer-grid{
-      display:grid;
-      grid-template-columns:1fr;
-      gap:32px;
-    }
-    @media (min-width:1024px){
-      .site-footer .footer-grid{
-        display:flex;
-        justify-content:center;
-        align-items:flex-start;
-        gap:28px;
-      }
-      .site-footer .footer-left{ flex:0 0 540px; max-width:540px; }
+    footer.site-footer {
+      background: #111111;
+      color: #d1d5db;
+      border-top: 1px solid #27272a;
+      padding: 48px 0;
     }
 
-    .site-footer .brand-title{ color:#fff; font-weight:900; font-size:32px; line-height:1; margin-bottom:8px; }
-    .site-footer .lead{ color:#d1d5db; font-size:14px; margin:0 0 20px; }
+    .site-footer .footer-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 32px;
+    }
+
+    @media (min-width:1024px) {
+      .site-footer .footer-grid {
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        gap: 28px;
+      }
+
+      .site-footer .footer-left {
+        flex: 0 0 540px;
+        max-width: 540px;
+      }
+    }
+
+    .site-footer .brand-title {
+      color: #fff;
+      font-weight: 900;
+      font-size: 32px;
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+
+    .site-footer .lead {
+      color: #d1d5db;
+      font-size: 14px;
+      margin: 0 0 20px;
+    }
 
     /* ▼ SNSボタン（白背景＋黒文字に変更） */
-    .site-footer .sns-list{ display:flex; flex-direction:column; gap:12px; max-width:320px; }
-    .site-footer .sns-btn{
-      display:inline-flex; align-items:center; justify-content:center; gap:12px;
-      width:100%; height:44px; padding:0 16px;
-      border:1px solid #1a1a1a; background:#ffffff; color:#111111;
-      text-decoration:none; border-radius:8px;
-      transition:background .15s ease, color .15s ease, opacity .15s ease;
+    .site-footer .sns-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-width: 320px;
     }
-    .site-footer .sns-btn:hover{
-      background:#f3f4f6; color:#000000;
-    }
-    .site-footer svg{ width:20px; height:20px; }
 
-    .site-footer .mini-links{ display:flex; flex-wrap:wrap; gap:12px 32px; margin-top:24px; font-size:13px; }
-    .site-footer .mini-links a{ color:#d1d5db; text-decoration:none; }
-    .site-footer .mini-links a:hover{ color:#ffffff; }
+    .site-footer .sns-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      width: 100%;
+      height: 44px;
+      padding: 0 16px;
+      border: 1px solid #1a1a1a;
+      background: #ffffff;
+      color: #111111;
+      text-decoration: none;
+      border-radius: 8px;
+      transition: background .15s ease, color .15s ease, opacity .15s ease;
+    }
+
+    .site-footer .sns-btn:hover {
+      background: #f3f4f6;
+      color: #000000;
+    }
+
+    .site-footer svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .site-footer .mini-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 32px;
+      margin-top: 24px;
+      font-size: 13px;
+    }
+
+    .site-footer .mini-links a {
+      color: #d1d5db;
+      text-decoration: none;
+    }
+
+    .site-footer .mini-links a:hover {
+      color: #ffffff;
+    }
 
     /* 右カラム：配置指定 */
-    .site-footer .right-col{
-      display:flex; flex-direction:column; align-items:center; text-align:center;
-    }
-    .site-footer .cta-btn{
-      display:inline-flex; align-items:center; gap:12px;
-      background:#C23A41; color:#fff; text-decoration:none;
-      padding:12px 22px; border-radius:9999px; transition:opacity .15s ease;
-      margin:0 auto;
-    }
-    .site-footer .cta-btn:hover{ opacity:.9; }
-
-    .site-footer .right-nav{
-      display:flex; flex-wrap:wrap; gap:12px 40px; margin-top:32px; font-size:14px;
-      justify-content:center;
-    }
-    .site-footer .right-nav a{ color:#d1d5db; text-decoration:none; }
-    .site-footer .right-nav a:hover{ color:#fff; }
-
-    .site-footer .right-col .copyright{
-      margin-top:32px;
-      width:100%;
-      text-align:right;
-      color:#9ca3af;
-      font-size:13px;
+    .site-footer .right-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
     }
 
-    nav[role="navigation"] svg{ width:1em; height:1em; }
-    nav[role="navigation"] .hidden{ display:none }
+    .site-footer .cta-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      background: #C23A41;
+      color: #fff;
+      text-decoration: none;
+      padding: 12px 22px;
+      border-radius: 9999px;
+      transition: opacity .15s ease;
+      margin: 0 auto;
+    }
 
-    .font-zen-maru { font-family: 'Zen Maru Gothic', sans-serif; }
-    .font-noto-sans { font-family: 'Noto Sans JP', sans-serif; }
+    .site-footer .cta-btn:hover {
+      opacity: .9;
+    }
 
-    @media (min-width:1024px){
-      .site-footer .right-col{
+    .site-footer .right-nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 40px;
+      margin-top: 32px;
+      font-size: 14px;
+      justify-content: center;
+    }
+
+    .site-footer .right-nav a {
+      color: #d1d5db;
+      text-decoration: none;
+    }
+
+    .site-footer .right-nav a:hover {
+      color: #fff;
+    }
+
+    .site-footer .right-col .copyright {
+      margin-top: 32px;
+      width: 100%;
+      text-align: right;
+      color: #9ca3af;
+      font-size: 13px;
+    }
+
+    nav[role="navigation"] svg {
+      width: 1em;
+      height: 1em;
+    }
+
+    nav[role="navigation"] .hidden {
+      display: none
+    }
+
+    .font-zen-maru {
+      font-family: 'Zen Maru Gothic', sans-serif;
+    }
+
+    .font-noto-sans {
+      font-family: 'Noto Sans JP', sans-serif;
+    }
+
+    @media (min-width:1024px) {
+      .site-footer .right-col {
         position: relative;
         top: 70px;
       }
-      footer.site-footer{
+
+      footer.site-footer {
         padding-bottom: calc(48px + 70px);
       }
     }
@@ -164,45 +317,61 @@
       {{-- 右側ナビ：記事一覧／企業／求人＋ログイン＆登録 --}}
       <nav class="nav">
         @php
-          $urlPosts   = Route::has('front.posts.index')   ? route('front.posts.index')   : null;
-          $urlCompany = Route::has('front.company.index') ? route('front.company.index') : null;
-          $urlJobs    = Route::has('front.jobs.index')    ? route('front.jobs.index')    : null;
+        $urlPosts = Route::has('front.posts.index') ? route('front.posts.index') : null;
+        $urlCompany = Route::has('front.company.index') ? route('front.company.index') : null;
+        $urlJobs = Route::has('front.jobs.index') ? route('front.jobs.index') : null;
         @endphp
 
-        @if ($urlPosts)   <a class="link" href="{{ $urlPosts }}">記事一覧</a> @endif
-        @if ($urlCompany) <a class="link" href="{{ $urlCompany }}">企業</a>   @endif
-        @if ($urlJobs)    <a class="link" href="{{ $urlJobs }}">求人</a>     @endif
+        @if ($urlPosts) <a class="link" href="{{ $urlPosts }}">記事一覧</a> @endif
+        @if ($urlCompany) <a class="link" href="{{ $urlCompany }}">企業</a> @endif
+        @if ($urlJobs) <a class="link" href="{{ $urlJobs }}">求人</a> @endif
 
         <span class="hidden sm:inline-block mx-2 opacity-30">|</span>
 
         @guest
-          <a href="{{ Route::has('login') ? route('login') : url('/login') }}"
-             class="px-3 py-1.5 rounded-full border border-gray-300 text-gray-700 text-xs font-medium hover:bg-gray-50 transition">
-            ログイン
-          </a>
-          @if (Route::has('register'))
-            <a href="{{ route('register') }}" class="ml-2 btn-register">
-              求職者登録（無料）
-            </a>
-          @endif
+        <a href="{{ Route::has('login') ? route('login') : url('/login') }}"
+          class="px-3 py-1.5 rounded-full border border-gray-300 text-gray-700 text-xs font-medium hover:bg-gray-50 transition">
+          ログイン
+        </a>
+        @if (Route::has('register'))
+        <a href="{{ route('register') }}" class="ml-2 btn-register">
+          求職者登録（無料）
+        </a>
+        @endif
         @else
-          <span class="text-gray-600 text-sm">{{ Auth::user()->name }}</span>
-          <form method="POST" action="{{ route('logout') }}" class="inline">
-            @csrf
-            <button type="submit"
-              class="ml-2 px-3 py-1.5 rounded-full border border-gray-300 text-gray-700 text-xs font-medium hover:bg-gray-50 transition">
-              ログアウト
-            </button>
-          </form>
+        @php
+        // ダッシュボードURL
+        $urlDashboard = Route::has('dashboard')
+        ? route('dashboard')
+        : url('/dashboard');
+        @endphp
+
+        {{-- ユーザー名 → ダッシュボードへ → ログアウト の順 --}}
+        <span class="text-gray-600 text-sm">{{ Auth::user()->name }}</span>
+
+        <a href="{{ $urlDashboard }}"
+          class="ml-2 px-3 py-1.5 rounded-full border border-gray-300 text-gray-700 text-xs font-medium hover:bg-gray-50 transition">
+          ダッシュボードへ
+        </a>
+
+        <form method="POST" action="{{ route('logout') }}" class="inline">
+          @csrf
+          <button type="submit"
+            class="ml-2 px-3 py-1.5 rounded-full border border-gray-300 text-gray-700 text-xs font-medium hover:bg-gray-50 transition">
+            ログアウト
+          </button>
+        </form>
         @endguest
       </nav>
+
+
     </div>
   </header>
 
   <main class="site-main">
     <div class="container">
       @hasSection('toolbar')
-        <div class="toolbar">@yield('toolbar')</div>
+      <div class="toolbar">@yield('toolbar')</div>
       @endif
       @yield('content')
     </div>
@@ -213,13 +382,13 @@
   <footer class="site-footer">
     <div class="container">
       @php
-        $urlPosts     = Route::has('front.posts.index')   ? route('front.posts.index')   : '#';
-        $urlJobs      = Route::has('front.jobs.index')    ? route('front.jobs.index')    : '#';
-        $urlCompany   = Route::has('front.company.index') ? route('front.company.index') : '#';
-        $urlContact   = Route::has('front.contact')       ? route('front.contact')       : (url('/contact')  ?: '#');
-        $urlOperator  = url('/company') ?: '#';
-        $urlPrivacy   = url('/privacy') ?: '#';
-        $urlForBiz    = url('/for-business');
+      $urlPosts = Route::has('front.posts.index') ? route('front.posts.index') : '#';
+      $urlJobs = Route::has('front.jobs.index') ? route('front.jobs.index') : '#';
+      $urlCompany = Route::has('front.company.index') ? route('front.company.index') : '#';
+      $urlContact = Route::has('front.contact') ? route('front.contact') : (url('/contact') ?: '#');
+      $urlOperator = url('/company') ?: '#';
+      $urlPrivacy = url('/privacy') ?: '#';
+      $urlForBiz = url('/for-business');
       @endphp
 
       <div class="footer-grid">
@@ -279,6 +448,7 @@
 
   @stack('scripts')
 </body>
+
 </html>
 
 <!-- LAYOUTMARK -->

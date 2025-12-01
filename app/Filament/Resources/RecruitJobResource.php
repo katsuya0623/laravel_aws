@@ -220,7 +220,6 @@ class RecruitJobResource extends Resource
                         ->visible(fn() => self::has('salary_to'))
                         ->columnSpan(4),
 
-
                     // 単位（必須）
                     Select::make('salary_unit')
                         ->label(self::has('salary_unit') ? self::req('単位') : '単位')
@@ -245,35 +244,8 @@ class RecruitJobResource extends Resource
                     ->placeholder('例：完全週休2日 服装自由 フレックス')
                     ->required(fn() => self::has('tags'))
                     ->maxLength(255)
-                    // ★ 修正箇所：rules() にまとめる
                     ->rules([
                         'string',
-                        function (string $attribute, $value, Closure $fail) {
-                            $raw = trim((string) $value);
-
-                            if ($raw === '') {
-                                $fail('タグを入力してください。');
-                                return;
-                            }
-
-                            $tags = preg_split('/\s+/u', $raw);
-
-                            if (count($tags) > 10) {
-                                $fail('タグは最大10個までです。');
-                                return;
-                            }
-
-                            foreach ($tags as $t) {
-                                if (mb_strlen($t) > 20) {
-                                    $fail("タグ「{$t}」が長すぎます（最大20文字）。");
-                                    return;
-                                }
-                                if (preg_match('/[,\|、。]/u', $t)) {
-                                    $fail("タグ「{$t}」に区切り記号は使えません。スペースで区切ってください。");
-                                    return;
-                                }
-                            }
-                        },
                     ])
                     // 保存時：空白を正規化して1本化
                     ->dehydrateStateUsing(function ($state) {
@@ -361,17 +333,17 @@ class RecruitJobResource extends Resource
                     ->visible(fn() => self::has('salary_unit')),
                 $hasStatus
                     ? Tables\Columns\BadgeColumn::make('status')->label('状態')
-                    ->colors([
-                        'secondary' => 'draft',
-                        'success'   => 'published',
-                        'danger'    => 'closed',
-                    ])
+                        ->colors([
+                            'secondary' => 'draft',
+                            'success'   => 'published',
+                            'danger'    => 'closed',
+                        ])
                     : Tables\Columns\BadgeColumn::make('is_published')->label('公開')
-                    ->colors([
-                        'secondary' => 0,
-                        'success'   => 1,
-                    ])
-                    ->formatStateUsing(fn($s) => $s ? '公開' : '下書き'),
+                        ->colors([
+                            'secondary' => 0,
+                            'success'   => 1,
+                        ])
+                        ->formatStateUsing(fn($s) => $s ? '公開' : '下書き'),
                 TextColumn::make('published_at')->label('公開')->dateTime('Y-m-d H:i')->sortable()
                     ->visible(fn() => self::has('published_at')),
                 TextColumn::make('updated_at')->label('更新')->since()->sortable()->alignment(Alignment::End),
