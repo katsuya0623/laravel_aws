@@ -23,7 +23,7 @@ class AdminResource extends Resource
     protected static ?string $navigationLabel = 'メンバー管理';
     protected static ?string $pluralModelLabel = '管理者';
     protected static ?string $modelLabel = '管理者';
-    protected static ?string $navigationGroup = 'システム';
+    protected static ?string $navigationGroup = 'System';
 
     public static function form(Form $form): Form
     {

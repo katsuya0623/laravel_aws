@@ -11,6 +11,7 @@ use Filament\Navigation\NavigationItem;
 
 use App\Filament\Resources\PostResource;
 use App\Filament\Resources\CompanyResource;
+use App\Filament\Resources\EndUserResource;   // ★ これ追加
 use App\Filament\Widgets\AdminQuickLinks;
 use App\Filament\Pages\AdminDashboard;
 
@@ -60,41 +61,57 @@ class AdminPanelProvider extends PanelProvider
             ])
 
             // ログイン後のホーム
-            ->homeUrl(fn () => AdminDashboard::getUrl())
+            ->homeUrl(fn() => AdminDashboard::getUrl())
 
             ->navigationItems([
+                // ▼ Post
                 NavigationItem::make('記事')
                     ->group('Post')
                     ->icon('heroicon-o-document-text')
-                    ->url(fn () => PostResource::getUrl('index'))
-                    ->isActiveWhen(fn () => request()->is('admin/posts*'))
+                    ->url(fn() => PostResource::getUrl('index'))
+                    ->isActiveWhen(fn() => request()->is('admin/posts*'))
                     ->sort(1),
 
+                // ▼ Management（ダッシュボードと同じ順） ---------------------
+
+                // ① エンドユーザー
+                NavigationItem::make('エンドユーザー')
+                    ->group('Management')
+                    ->icon('heroicon-o-user-group')
+                    ->url(fn() => EndUserResource::getUrl('index'))
+                    ->isActiveWhen(fn() => request()->is('admin/users*'))
+                    ->sort(8),
+
+                // ② 企業一覧
                 NavigationItem::make('企業一覧')
                     ->group('Management')
                     ->icon('heroicon-o-building-office-2')
-                    ->url(fn () => CompanyResource::getUrl('index'))
-                    ->isActiveWhen(fn () => request()->is('admin/companies*'))
+                    ->url(fn() => CompanyResource::getUrl('index'))
+                    ->isActiveWhen(fn() => request()->is('admin/companies*'))
                     ->sort(9),
 
+                // ③ 求人一覧
                 NavigationItem::make('求人一覧')
                     ->group('Management')
                     ->icon('heroicon-o-briefcase')
-                    ->url(fn () => route('admin.jobs.index'))
-                    ->isActiveWhen(fn () => request()->is('admin/recruit_jobs*') || request()->is('admin/jobs*'))
+                    ->url(fn() => route('admin.jobs.index'))
+                    ->isActiveWhen(fn() => request()->is('admin/recruit_jobs*') || request()->is('admin/jobs*'))
                     ->sort(10),
 
+                // ④ 応募一覧
                 NavigationItem::make('応募一覧')
                     ->group('Management')
                     ->icon('heroicon-o-document-text')
-                    ->url(fn () => route('admin.applications.index'))
-                    ->isActiveWhen(fn () => request()->is('admin/applications*'))
+                    ->url(fn() => route('admin.applications.index'))
+                    ->isActiveWhen(fn() => request()->is('admin/applications*'))
                     ->sort(11),
             ])
+
 
             ->navigationGroups([
                 NavigationGroup::make('Post'),
                 NavigationGroup::make('Management'),
+                NavigationGroup::make('System'),   // ★ 英語化して一番下に
             ])
 
             ->middleware([

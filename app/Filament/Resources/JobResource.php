@@ -20,6 +20,8 @@ class JobResource extends Resource
     protected static ?string $navigationLabel = '求人一覧';
     protected static ?string $modelLabel      = '求人';
     protected static ?string $pluralModelLabel= '求人';
+    protected static ?int $navigationSort = 10;
+
 
     /** 安全にカラム有無を判定 */
     protected static function has(string $col): bool

@@ -45,6 +45,13 @@ class CompanyResource extends Resource
     protected static ?string $model = Company::class;
     // ▼ これを追加！
     protected static bool $shouldRegisterNavigation = false;
+    protected static ?int $navigationSort = 20;
+
+
+        public static function getNavigationSort(): ?int   // ← これを追加
+    {
+        return static::$navigationSort ?? 20;
+    }
 
     public static function getEloquentQuery(): Builder
     {

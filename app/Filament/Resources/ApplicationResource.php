@@ -22,6 +22,14 @@ class ApplicationResource extends Resource
     protected static ?string $navigationLabel  = '応募一覧';
     protected static ?string $pluralModelLabel = '応募一覧（管理者）';
     protected static ?string $navigationGroup  = 'Management'; // 企業一覧と合わせる
+    protected static ?int    $navigationSort   = 40; // ★ これを追加
+
+    public static function getNavigationSort(): ?int   // ← これを追加
+    {
+        return static::$navigationSort ?? 40;
+    }
+
+
 
     public static function form(Form $form): Form
     {

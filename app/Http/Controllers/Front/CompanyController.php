@@ -36,8 +36,8 @@ class CompanyController extends Controller
         // 取得 → 各行にロゴURLと詳細遷移キーを付与
         $companies = $q->get()->map(function ($row) use ($schema) {
             $arr = (array) $row;
-            $arr['logoUrl'] = $this->resolveLogoUrl($schema, $arr);                       // 一覧用ロゴ
-            $arr['showKey'] = $arr['slug'] ?? ($arr['id'] ?? null);                       // /company/{slugOrId}
+            $arr['logoUrl'] = $this->resolveLogoUrl($schema, $arr);   // 一覧用ロゴ
+            $arr['showKey'] = $arr['slug'] ?? ($arr['id'] ?? null);   // /company/{slugOrId}
             return (object) $arr;
         });
 
@@ -86,10 +86,18 @@ class CompanyController extends Controller
         // ロゴURLを確実に解決
         $logoUrl = $this->resolveLogoUrl($schema, (array) $row);
 
+        // 一覧と同じ形で company オブジェクト化
         $company = (object) $row;
+
+        // ★ 追加：company_profiles から詳細情報を取得（会社名で突合）
+        $profile = null;
+        if (!empty($company->name)) {
+            $profile = CompanyProfile::where('company_name', $company->name)->first();
+        }
 
         return view('front.company.show', [
             'company' => $company,
+            'profile' => $profile,   // ← これを Blade 側で使う
             'logoUrl' => $logoUrl,   // Blade 側ではこれを <img src> に
         ]);
     }

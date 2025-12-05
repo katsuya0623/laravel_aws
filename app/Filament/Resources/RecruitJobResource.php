@@ -34,6 +34,14 @@ class RecruitJobResource extends Resource
     protected static ?string $modelLabel        = '求人';
     protected static ?string $pluralModelLabel  = '求人';
     protected static ?string $slug              = 'recruit-jobs';
+    protected static ?int $navigationSort = 30;
+
+
+    public static function getNavigationSort(): ?int   // ← これを追加
+    {
+        return static::$navigationSort ?? 30;
+    }
+    
 
     /** 必須ラベル（赤い※ + 文言） */
     protected static function req(string $label): HtmlString

@@ -36,6 +36,13 @@ class PostResource extends Resource
     protected static ?string $modelLabel       = '記事';
     protected static ?string $navigationGroup  = 'コンテンツ';
 
+    // ★ 自動でサイドバーに出さない
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
+
     public static function form(Form $form): Form
     {
         return $form->schema([
