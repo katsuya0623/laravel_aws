@@ -42,7 +42,7 @@
           <div class="relative">
             <input id="company_name"
               type="text"
-              value="{{ old('company_name', $company->company_name) }}"
+              value="{{ $company?->name ?? $company?->company_name ?? '' }}"
               class="mt-1 block w-full border-gray-300 rounded-md bg-gray-50 text-gray-600 pointer-events-none"
               disabled
               aria-readonly="true"

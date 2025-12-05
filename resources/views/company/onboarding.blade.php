@@ -4,12 +4,12 @@
   </x-slot>
 
   @php
-    // 未定義エラー防止（create() から $company を渡していないケースに対応）
-    $company = $company ?? null;
+  // 未定義エラー防止（create() から $company を渡していないケースに対応）
+  $company = $company ?? null;
 
-    $contactUrl = \Illuminate\Support\Facades\Route::has('contact')
-      ? route('contact')
-      : url('/contact');
+  $contactUrl = \Illuminate\Support\Facades\Route::has('contact')
+  ? route('contact')
+  : url('/contact');
   @endphp
 
   {{-- ▼ このページは翻訳させない --}}
@@ -17,21 +17,21 @@
 
     {{-- ✅ 成功メッセージ（1つに統一） --}}
     @if (session('status'))
-      <div class="alert alert-success shadow-sm mb-4">
-        <span class="font-medium">{{ session('status') }}</span>
-      </div>
+    <div class="alert alert-success shadow-sm mb-4">
+      <span class="font-medium">{{ session('status') }}</span>
+    </div>
     @endif
 
     {{-- エラーメッセージ --}}
     @if ($errors->any())
-      <div class="alert alert-error shadow-sm mb-4">
-        <div class="font-medium mb-1">保存に失敗しました。</div>
-        <ul class="list-disc pl-5 text-sm">
-          @foreach ($errors->all() as $e)
-            <li>{{ $e }}</li>
-          @endforeach
-        </ul>
-      </div>
+    <div class="alert alert-error shadow-sm mb-4">
+      <div class="font-medium mb-1">保存に失敗しました。</div>
+      <ul class="list-disc pl-5 text-sm">
+        @foreach ($errors->all() as $e)
+        <li>{{ $e }}</li>
+        @endforeach
+      </ul>
+    </div>
     @endif
 
     <form method="POST"
@@ -51,7 +51,7 @@
           <div class="relative">
             <input id="company_name"
               type="text"
-              value="{{ old('company_name', $company->company_name ?? '') }}"
+              value="{{ $company?->name ?? $company?->company_name ?? '' }}"
               class="mt-1 block w-full border-gray-300 rounded-md bg-gray-50 text-gray-600 pointer-events-none"
               disabled
               aria-readonly="true"
@@ -114,18 +114,18 @@
           <x-input-error :messages="$errors->get('logo')" class="mt-2" />
 
           @if(!empty($company->logo_path ?? null))
-            <label class="inline-flex items-center gap-2 mt-3 text-sm">
-              <input type="checkbox" name="remove_logo" value="1" translate="no">
-              ロゴを削除する
-            </label>
+          <label class="inline-flex items-center gap-2 mt-3 text-sm">
+            <input type="checkbox" name="remove_logo" value="1" translate="no">
+            ロゴを削除する
+          </label>
           @endif
         </div>
 
         @php
-          $path = $company->logo_path ?? null;
-          $logoUrl = $path && \Illuminate\Support\Facades\Storage::disk('public')->exists($path)
-            ? \Illuminate\Support\Facades\Storage::disk('public')->url($path)
-            : asset('images/no-image.svg');
+        $path = $company->logo_path ?? null;
+        $logoUrl = $path && \Illuminate\Support\Facades\Storage::disk('public')->exists($path)
+        ? \Illuminate\Support\Facades\Storage::disk('public')->url($path)
+        : asset('images/no-image.svg');
         @endphp
         <div class="shrink-0" translate="no">
           <div class="text-xs text-gray-500 mb-1">プレビュー</div>

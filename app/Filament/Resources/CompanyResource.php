@@ -29,6 +29,17 @@ use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
+
+use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Group;
+
+
+
+
+
+
 class CompanyResource extends Resource
 {
     protected static ?string $model = Company::class;
@@ -40,10 +51,13 @@ class CompanyResource extends Resource
         return parent::getEloquentQuery()->withInviteState();
     }
 
+// CompanyResource 内
+
     /** 共通フォーム */
     protected static function formSchema(): array
     {
         return [
+            // ① 会社情報
             Fieldset::make('会社情報')->schema([
                 TextInput::make('name')
                     ->label('企業名')->required()->rule('max:30')
@@ -51,13 +65,115 @@ class CompanyResource extends Resource
                     ->validationAttribute('企業名')
                     ->live()->helperText('30文字まで'),
 
+                // ★ ここ追加：会社名（カナ）
+                TextInput::make('company_name_kana')
+                    ->label('企業名（カナ）')
+                    ->maxLength(255)
+                    ->helperText('カタカナで入力してください'),
+
                 TextInput::make('slug')
                     ->label(new HtmlString('Slug <span class="text-red-500">*</span>'))
                     ->required()->rule('alpha_dash')->unique(ignoreRecord: true)->maxLength(255),
 
-                TextInput::make('description')->label('説明')->columnSpanFull(),
+                TextInput::make('description')
+                    ->label('説明')
+                    ->columnSpanFull(),
             ]),
+            // ② 企業プロフィール（company_profiles）
+            Group::make()
+                ->relationship('profile')   // ← Company::profile() にひも付け
+                ->schema([
+                    Fieldset::make('企業プロフィール')
+                        ->columns(3)
+                        ->schema([
+                            // ▼ ここを追加
+                            TextInput::make('company_name')
+                                ->label('企業名（フロント表示）')
+                                ->maxLength(255)
+                                ->required(),
 
+                            TextInput::make('company_name_kana')
+                                ->label('企業名（カナ）')
+                                ->maxLength(255),
+                            // 事業内容 / 紹介
+                            Textarea::make('description')
+                                ->label('事業内容 / 紹介')
+                                ->rows(4)
+                                ->maxLength(2000)
+                                ->columnSpanFull(),
+
+                            // ロゴ画像
+                            FileUpload::make('logo_path')
+                                ->label('ロゴ画像（最大10MB / SVG, PNG, JPG, WebP）')
+                                ->image()
+                                ->disk('public')
+                                ->directory('company_logos')
+                                ->maxSize(10240)
+                                ->imagePreviewHeight('120')
+                                ->openable()
+                                ->downloadable()
+                                ->nullable(),
+
+                            // 連絡先
+                            TextInput::make('website_url')
+                                ->label('Webサイト')
+                                ->url()
+                                ->maxLength(255)
+                                ->placeholder('https://example.com'),
+
+                            TextInput::make('email')
+                                ->label('代表メール')
+                                ->email()
+                                ->maxLength(255)
+                                ->placeholder('info@example.com'),
+
+                            TextInput::make('tel')
+                                ->label('電話番号')
+                                ->maxLength(20)
+                                ->placeholder('03-1234-5678 / +81-3-1234-5678'),
+
+                            // 住所
+                            TextInput::make('postal_code')
+                                ->label('郵便番号')
+                                ->maxLength(8)
+                                ->placeholder('123-4567'),
+
+                            TextInput::make('prefecture')
+                                ->label('都道府県')
+                                ->maxLength(255),
+
+                            TextInput::make('city')
+                                ->label('市区町村')
+                                ->maxLength(255),
+
+                            TextInput::make('address1')
+                                ->label('番地・建物')
+                                ->maxLength(255),
+
+                            TextInput::make('address2')
+                                ->label('部屋番号など')
+                                ->maxLength(255),
+
+                            // 詳細情報
+                            TextInput::make('industry')
+                                ->label('業種')
+                                ->maxLength(255),
+
+                            TextInput::make('employees')
+                                ->label('従業員数')
+                                ->numeric()
+                                ->minValue(1)
+                                ->maxValue(1000000),
+
+                            DatePicker::make('founded_on')
+                                ->label('設立日')
+                                ->native(false)
+                                ->displayFormat('Y-m-d'),
+                        ]),
+                ]),
+
+
+            // ③ ログインアカウント（任意）
             Fieldset::make('ログインアカウント（任意）')
                 ->columns(2)
                 ->schema([
@@ -65,10 +181,11 @@ class CompanyResource extends Resource
                         ->label('メールアドレス')->email()
                         ->helperText('このメールのユーザーを作成/更新して会社に紐付けます。パスワードは直接変更不可（リセットメールで変更）。')
                         ->dehydrated(false)
-                        ->required(fn (string $context) => $context === 'create'),
+                        ->required(fn(string $context) => $context === 'create'),
                 ]),
         ];
     }
+
 
     public static function form(Form $form): Form
     {
@@ -84,13 +201,13 @@ class CompanyResource extends Resource
                 TextColumn::make('name')->label('企業名')->searchable(),
                 TextColumn::make('status')
                     ->label('状態')->badge()
-                    ->state(fn ($record) => $record->has_pending_invite ? '招待中' : 'アクティブ')
-                    ->color(fn (string $state) => $state === '招待中' ? 'warning' : 'success'),
+                    ->state(fn($record) => $record->has_pending_invite ? '招待中' : 'アクティブ')
+                    ->color(fn(string $state) => $state === '招待中' ? 'warning' : 'success'),
                 TextColumn::make('slug')->label('Slug')->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('updated_at')->label('更新日')->date('Y-m-d')->sortable(),
             ])
             ->defaultSort('id', 'desc')
-            ->recordClasses(fn ($record) => $record->has_pending_invite ? 'bg-amber-50' : 'bg-emerald-50/40')
+            ->recordClasses(fn($record) => $record->has_pending_invite ? 'bg-amber-50' : 'bg-emerald-50/40')
 
             ->headerActions([
                 CreateAction::make()
@@ -154,7 +271,7 @@ class CompanyResource extends Resource
                 Action::make('quick_send_reset_link')
                     ->label('リセット送信（自動）')
                     ->icon('heroicon-o-paper-airplane')
-                    ->visible(fn (Company $record) => filled(CompanyResource::guessResetEmail($record)))
+                    ->visible(fn(Company $record) => filled(CompanyResource::guessResetEmail($record)))
                     ->requiresConfirmation()
                     ->modalHeading('パスワードリセットリンクを送信')
                     ->modalDescription(function (Company $record) {
@@ -232,7 +349,10 @@ class CompanyResource extends Resource
                                     $user->password = bcrypt(Str::random(24));
                                 }
                                 if (method_exists($user, 'assignRole')) {
-                                    try { $user->assignRole('company'); } catch (\Throwable $e) {}
+                                    try {
+                                        $user->assignRole('company');
+                                    } catch (\Throwable $e) {
+                                    }
                                 }
                                 $user->role      = 'company';
                                 $user->is_active = true;
@@ -296,7 +416,10 @@ class CompanyResource extends Resource
             $user->password = bcrypt(Str::random(24));
         }
         if (method_exists($user, 'assignRole')) {
-            try { $user->assignRole('company'); } catch (\Throwable $e) {}
+            try {
+                $user->assignRole('company');
+            } catch (\Throwable $e) {
+            }
         }
         $user->role      = 'company';
         $user->is_active = true;
@@ -360,17 +483,21 @@ class CompanyResource extends Resource
             if ($u = User::where('email', $company->email)->first()) return $u;
         }
 
-        if (Schema::hasTable('company_user')
+        if (
+            Schema::hasTable('company_user')
             && Schema::hasColumn('company_user', 'company_id')
-            && Schema::hasColumn('company_user', 'user_id')) {
+            && Schema::hasColumn('company_user', 'user_id')
+        ) {
             $userId = DB::table('company_user')->where('company_id', $company->id)->value('user_id');
             if ($userId && ($u = User::find($userId))) return $u;
         }
 
-        if (Schema::hasTable('company_profiles')
+        if (
+            Schema::hasTable('company_profiles')
             && Schema::hasTable('company_user')
             && Schema::hasColumn('company_profiles', 'company_id')
-            && Schema::hasColumn('company_user', 'company_profile_id')) {
+            && Schema::hasColumn('company_user', 'company_profile_id')
+        ) {
             $profileId = DB::table('company_profiles')->where('company_id', $company->id)->value('id');
             if ($profileId) {
                 $userId = DB::table('company_user')->where('company_profile_id', $profileId)->value('user_id');
@@ -378,16 +505,20 @@ class CompanyResource extends Resource
             }
         }
 
-        if (Schema::hasTable('company_profiles')
+        if (
+            Schema::hasTable('company_profiles')
             && Schema::hasColumn('company_profiles', 'user_id')
-            && Schema::hasColumn('company_profiles', 'company_id')) {
+            && Schema::hasColumn('company_profiles', 'company_id')
+        ) {
             $profileUserId = DB::table('company_profiles')->where('company_id', $company->id)->value('user_id');
             if ($profileUserId && ($u = User::find($profileUserId))) return $u;
         }
 
-        if (Schema::hasTable('company_profiles')
+        if (
+            Schema::hasTable('company_profiles')
             && Schema::hasColumn('company_profiles', 'email')
-            && Schema::hasColumn('company_profiles', 'company_id')) {
+            && Schema::hasColumn('company_profiles', 'company_id')
+        ) {
             $profileEmail = DB::table('company_profiles')->where('company_id', $company->id)->value('email');
             if ($profileEmail) {
                 if ($u = User::where('email', $profileEmail)->first()) return $u;
@@ -431,10 +562,17 @@ class CompanyResource extends Resource
         }
 
         if (method_exists($user, 'assignRole')) {
-            try { $user->assignRole('company'); } catch (\Throwable $e) {}
+            try {
+                $user->assignRole('company');
+            } catch (\Throwable $e) {
+            }
         }
-        if (property_exists($user, 'role'))      { $user->role = 'company'; }
-        if (property_exists($user, 'is_active')) { $user->is_active = true; }
+        if (property_exists($user, 'role')) {
+            $user->role = 'company';
+        }
+        if (property_exists($user, 'is_active')) {
+            $user->is_active = true;
+        }
         if (Schema::hasColumn($user->getTable(), 'email_verified_at') && empty($user->email_verified_at)) {
             $user->email_verified_at = now();
         }
@@ -456,9 +594,11 @@ class CompanyResource extends Resource
     /** 会社とユーザーの紐付けを安全に作成 */
     private static function attachUserToCompany(Company $company, User $user): void
     {
-        if (Schema::hasTable('company_user')
+        if (
+            Schema::hasTable('company_user')
             && Schema::hasColumn('company_user', 'company_id')
-            && Schema::hasColumn('company_user', 'user_id')) {
+            && Schema::hasColumn('company_user', 'user_id')
+        ) {
 
             $exists = DB::table('company_user')
                 ->where('company_id', $company->id)
@@ -476,10 +616,12 @@ class CompanyResource extends Resource
             return;
         }
 
-        if (Schema::hasTable('company_user')
+        if (
+            Schema::hasTable('company_user')
             && Schema::hasColumn('company_user', 'company_profile_id')
             && Schema::hasTable('company_profiles')
-            && Schema::hasColumn('company_profiles', 'company_id')) {
+            && Schema::hasColumn('company_profiles', 'company_id')
+        ) {
 
             $profileId = DB::table('company_profiles')->where('company_id', $company->id)->value('id');
 
@@ -508,6 +650,7 @@ class CompanyResource extends Resource
             }
         }
     }
+
 
     public static function getPages(): array
     {
