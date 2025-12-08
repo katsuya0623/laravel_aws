@@ -63,13 +63,25 @@ class RouteServiceProvider extends ServiceProvider
             return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
         });
 
-        // ログイン系（任意で使用。routes側で 'throttle:login' を付与）
+        // ★ フロントログイン（エンドユーザー＋企業ユーザー）
         RateLimiter::for('login', function (Request $request) {
-            // IP＋メールで制限（5分間に10回など）
             $email = (string) $request->input('email');
+
+            // IP & メール＋IP で5分10回
             return [
                 Limit::perMinutes(5, 10)->by($request->ip()),
-                Limit::perMinutes(5, 10)->by($email.$request->ip()),
+                Limit::perMinutes(5, 10)->by($email . $request->ip()),
+            ];
+        });
+
+        // ★ 管理者ログイン専用（少し厳しめ）
+        RateLimiter::for('admin-login', function (Request $request) {
+            $email = (string) $request->input('email');
+
+            // 管理者は 5分で5回まで とかにしておく（好みでOK）
+            return [
+                Limit::perMinutes(5, 5)->by($request->ip()),
+                Limit::perMinutes(5, 5)->by($email . $request->ip()),
             ];
         });
     }

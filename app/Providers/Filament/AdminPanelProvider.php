@@ -122,6 +122,9 @@ class AdminPanelProvider extends PanelProvider
                 ShareErrorsFromSession::class,
                 VerifyCsrfToken::class,
                 SubstituteBindings::class,
+                                // ★ これを追加（admin用レートリミット）
+                'throttle:admin-login',
+                
             ])
             ->authMiddleware([Authenticate::class]);
     }

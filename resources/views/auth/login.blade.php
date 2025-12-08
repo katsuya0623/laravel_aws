@@ -1,3 +1,5 @@
+{{-- resources/views/auth/login.blade.php --}}
+
 <x-guest-layout>
     <div class="mb-6 text-center">
         <h1 class="text-2xl font-semibold tracking-tight">サインイン</h1>
@@ -9,6 +11,9 @@
 
     <form method="POST" action="{{ route('login') }}" class="space-y-5">
         @csrf
+
+        {{-- ★ reCAPTCHA v3 用トークン --}}
+        <input type="hidden" name="g-recaptcha-response" id="recaptcha_token">
 
         <!-- Email -->
         <div>
@@ -71,8 +76,26 @@
 
         @if (Route::has('register'))
             <p class="text-center text-sm text-slate-500">
-                アカウント未作成？ <a href="{{ route('register') }}" class="text-emerald-600 hover:text-emerald-500 underline underline-offset-2">新規登録</a>
+                アカウント未作成？
+                <a href="{{ route('register') }}"
+                   class="text-emerald-600 hover:text-emerald-500 underline underline-offset-2">新規登録</a>
             </p>
         @endif
     </form>
+
+    {{-- ★ reCAPTCHA v3 の JS（フォームのすぐ下に置く） --}}
+    <script src="https://www.google.com/recaptcha/api.js?render={{ config('services.recaptcha.site_key') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            grecaptcha.ready(function () {
+                grecaptcha.execute("{{ config('services.recaptcha.site_key') }}", {action: "login"})
+                    .then(function (token) {
+                        var el = document.getElementById('recaptcha_token');
+                        if (el) {
+                            el.value = token;
+                        }
+                    });
+            });
+        });
+    </script>
 </x-guest-layout>

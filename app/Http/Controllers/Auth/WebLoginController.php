@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Services\ReCaptchaService;         // ★ 追加
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -16,7 +17,7 @@ class WebLoginController extends Controller
         return view('auth.login');
     }
 
-    public function store(Request $request)
+    public function store(Request $request, ReCaptchaService $recaptcha) // ★ サービスを DI
     {
         $request->validate([
             'email'    => ['required', 'string', 'email'],
@@ -24,9 +25,23 @@ class WebLoginController extends Controller
         ]);
 
         // 入力を正規化（余白・大文字小文字の揺れ対策）
-        $email = mb_strtolower(trim($request->input('email')));
-        $pass  = (string)$request->input('password');
+        $email    = mb_strtolower(trim($request->input('email')));
+        $pass     = (string) $request->input('password');
         $remember = $request->boolean('remember');
+
+        // ★ reCAPTCHA v3 検証 ------------------------------------
+        // login.blade 側で <input type="hidden" name="g-recaptcha-response"> を
+        // セットしておく前提
+        $token = (string) $request->input('g-recaptcha-response');
+
+        if (! $recaptcha->verify($token, 'login')) {  // action 名 'login' は JS 側と合わせる
+            return back()
+                ->withErrors([
+                    'email' => '自動判定によりログインがブロックされました。もう一度お試しください。',
+                ])
+                ->withInput(['email' => $email]);
+        }
+        // -----------------------------------------------------
 
         // ---------- 一時デバッグログ（原因特定用） ----------
         try {
