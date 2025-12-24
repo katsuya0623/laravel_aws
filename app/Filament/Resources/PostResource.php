@@ -25,15 +25,17 @@ use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Str;
+use Filament\Forms\Components\RichEditor;
+
 
 class PostResource extends Resource
 {
     protected static ?string $model = Post::class;
 
     protected static ?string $navigationIcon   = 'heroicon-o-document-text';
-    protected static ?string $navigationLabel  = '記事';
-    protected static ?string $pluralModelLabel = '記事';
-    protected static ?string $modelLabel       = '記事';
+    protected static ?string $navigationLabel  = '記事一覧';
+    protected static ?string $pluralModelLabel = '記事一覧';
+    protected static ?string $modelLabel       = '記事一覧';
     protected static ?string $navigationGroup  = 'コンテンツ';
 
     // ★ 自動でサイドバーに出さない
@@ -74,11 +76,10 @@ class PostResource extends Resource
                         ->label('要約')
                         ->rows(3),
 
-                    Textarea::make('body')
+                    RichEditor::make('body')
                         ->label('本文')
-                        ->rows(14)
-                        ->autosize()
-                        ->required(),
+                        ->required()
+                        ->columnSpanFull(),
                 ])->columnSpan(8),
 
                 // 右：公開・画像・スポンサー
@@ -87,7 +88,7 @@ class PostResource extends Resource
                         ->label('公開日時')
                         ->seconds(false)
                         // ステータスが「公開」のときだけ必須
-                        ->required(fn (Get $get) => $get('status') === 'published'),
+                        ->required(fn(Get $get) => $get('status') === 'published'),
 
                     Select::make('status')
                         ->label('ステータス')
@@ -103,7 +104,7 @@ class PostResource extends Resource
 
                     Select::make('sponsor_company_id')
                         ->label('スポンサー企業')
-                        ->options(fn () => Company::query()->orderBy('name')->pluck('name', 'id')->toArray())
+                        ->options(fn() => Company::query()->orderBy('name')->pluck('name', 'id')->toArray())
                         ->searchable()
                         ->preload()
                         ->native(false),
@@ -123,8 +124,6 @@ class PostResource extends Resource
                             $record = $get('record');
                             return $record === null || blank($record->thumbnail_path);
                         }),
-
-                    TextInput::make('reading_time')->label('推定読了分')->numeric(),
 
                     Section::make('SEO')->schema([
                         TextInput::make('seo_title')->label('SEOタイトル')->maxLength(255),
@@ -160,7 +159,7 @@ class PostResource extends Resource
                 IconColumn::make('published_at')
                     ->label('公開')
                     ->boolean()
-                    ->state(fn ($r) => !blank($r->published_at))
+                    ->state(fn($r) => !blank($r->published_at))
                     ->trueIcon('heroicon-o-check')
                     ->falseIcon('heroicon-o-x-mark'),
 

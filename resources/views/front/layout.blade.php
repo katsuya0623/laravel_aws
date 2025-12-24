@@ -11,7 +11,6 @@
   <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
 
   @vite(['resources/css/app.css', 'resources/js/app.js'])
-  <link rel="stylesheet" href="/build/override.css?v=1756708119">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -55,7 +54,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      height: 56px;
+      height: 100px;
       gap: 16px;
     }
 
@@ -74,7 +73,7 @@
     .nav {
       display: flex;
       align-items: center;
-      gap: 16px;
+      gap: 60px;
       font-size: 13px;
     }
 
@@ -91,9 +90,9 @@
     .btn-register {
       background: #C23A41;
       color: #fff;
-      border-radius: 9999px;
-      padding: .375rem .875rem;
-      font-size: .75rem;
+      border-radius: 10px;
+      padding: 10px 30px;
+      font-size: 1.3rem;
       font-weight: 600;
       display: inline-flex;
       align-items: center;
@@ -266,6 +265,9 @@
       color: #9ca3af;
       font-size: 13px;
     }
+    .header-in {
+      gap: 100px;
+    }
 
     nav[role="navigation"] svg {
       width: 1em;
@@ -294,6 +296,22 @@
         padding-bottom: calc(48px + 70px);
       }
     }
+
+
+      @media (max-width:1024px) {
+        .header-in {
+      gap: 60px;
+    }
+  }
+
+        @media (max-width:840px) {
+        .header-in {
+      gap: 40px;
+    }
+  }
+
+
+
   </style>
 </head>
 
@@ -302,35 +320,39 @@
   @php use Illuminate\Support\Facades\Route; @endphp
 
   <header class="site-header">
-    <div class="container header-inner">
-      <div class="brand">
-        <a href="/" aria-label="ドウソコ top" class="flex flex-col items-start leading-tight">
-          <span class="font-noto-sans text-[11px] font-normal leading-[100%] tracking-[0] text-gray-500">
-            リアルな就活、リアルな暮らし。
-          </span>
-          <span class="font-zen-maru text-[40px] font-black leading-[100%] tracking-[-0.1em] text-[#C23A41]" style="font-weight:900;">
-            ドウソコ
-          </span>
-        </a>
+    <div class="container header-inner justify-between">
+      {{-- 左側：ロゴ＋ナビ --}}
+      <div class="flex items-center gap-8 header-in">
+        <div class="brand">
+          <a href="/" aria-label="ドウソコ top" class="flex flex-col items-start leading-tight">
+            <span class="font-noto-sans text-[11px] font-normal leading-[100%] tracking-[0] text-gray-500">
+              リアルな就活、リアルな暮らし。
+            </span>
+            <span class="font-zen-maru text-[40px] font-black leading-[100%] tracking-[-0.1em] text-[#C23A41]" style="font-weight:900;">
+              ドウソコ
+            </span>
+          </a>
+        </div>
+
+        {{-- ナビリンク --}}
+        <nav class="nav">
+          @php
+          $urlPosts = Route::has('front.posts.index') ? route('front.posts.index') : null;
+          $urlCompany = Route::has('front.company.index') ? route('front.company.index') : null;
+          $urlJobs = Route::has('front.jobs.index') ? route('front.jobs.index') : null;
+          @endphp
+
+          @if ($urlPosts) <a class="link" href="{{ $urlPosts }}">記事一覧</a> @endif
+          @if ($urlJobs) <a class="link" href="{{ $urlJobs }}">求人情報</a> @endif
+          @if ($urlCompany) <a class="link" href="{{ $urlCompany }}">求人企業</a> @endif
+        </nav>
       </div>
 
-      {{-- 右側ナビ：記事一覧／企業／求人＋ログイン＆登録 --}}
-      <nav class="nav">
-        @php
-        $urlPosts = Route::has('front.posts.index') ? route('front.posts.index') : null;
-        $urlCompany = Route::has('front.company.index') ? route('front.company.index') : null;
-        $urlJobs = Route::has('front.jobs.index') ? route('front.jobs.index') : null;
-        @endphp
-
-        @if ($urlPosts) <a class="link" href="{{ $urlPosts }}">記事一覧</a> @endif
-        @if ($urlCompany) <a class="link" href="{{ $urlCompany }}">企業</a> @endif
-        @if ($urlJobs) <a class="link" href="{{ $urlJobs }}">求人</a> @endif
-
-        <span class="hidden sm:inline-block mx-2 opacity-30">|</span>
-
+      {{-- 右側：ログイン・登録ボタン --}}
+      <div class="flex items-center gap-2">
         @guest
         <a href="{{ Route::has('login') ? route('login') : url('/login') }}"
-          class="px-3 py-1.5 rounded-full border border-gray-300 text-gray-700 text-xs font-medium hover:bg-gray-50 transition">
+          class="px-5 py-2 rounded-full border border-gray-300 text-gray-700 text-xs font-medium hover:bg-gray-50 transition">
           ログイン
         </a>
         @if (Route::has('register'))
@@ -339,33 +361,22 @@
         </a>
         @endif
         @else
-        @php
-        // ダッシュボードURL
-        $urlDashboard = Route::has('dashboard')
-        ? route('dashboard')
-        : url('/dashboard');
-        @endphp
-
-        {{-- ユーザー名 → ダッシュボードへ → ログアウト の順 --}}
         <span class="text-gray-600 text-sm">{{ Auth::user()->name }}</span>
-
-        <a href="{{ $urlDashboard }}"
-          class="ml-2 px-3 py-1.5 rounded-full border border-gray-300 text-gray-700 text-xs font-medium hover:bg-gray-50 transition">
+        <a href="{{ route('dashboard') }}"
+          class="ml-2 px-5 py-2 rounded-full border border-gray-300 text-gray-700 text-xs font-medium hover:bg-gray-50 transition">
           ダッシュボードへ
         </a>
-
         <form method="POST" action="{{ route('logout') }}" class="inline">
           @csrf
           <button type="submit"
-            class="ml-2 px-3 py-1.5 rounded-full border border-gray-300 text-gray-700 text-xs font-medium hover:bg-gray-50 transition">
+            class="ml-2 px-5 py-2 rounded-full border border-gray-300 text-gray-700 text-xs font-medium hover:bg-gray-50 transition">
             ログアウト
           </button>
         </form>
         @endguest
-      </nav>
-
-
+      </div>
     </div>
+
   </header>
 
   <main class="site-main">

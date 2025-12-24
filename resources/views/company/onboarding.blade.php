@@ -43,10 +43,10 @@
       @csrf
 
       <div class="grid md:grid-cols-2 gap-4">
-        {{-- 会社名（視覚＆操作ロック。送信もしない） --}}
+        {{-- 企業名（視覚＆操作ロック。送信もしない） --}}
         <div>
           <x-input-label for="company_name">
-            会社名 <span class="text-red-500">*</span>
+            企業名 <span class="text-red-500">*</span>
           </x-input-label>
           <div class="relative">
             <input id="company_name"
@@ -63,16 +63,16 @@
             </div>
           </div>
           <p class="mt-1 text-sm text-red-500">
-            会社名の変更はできません。変更をご希望の場合は
+            企業名の変更はできません。変更をご希望の場合は
             <a href="{{ $contactUrl }}" class="underline text-indigo-600">お問い合わせ</a>
             ください。
           </p>
         </div>
 
-        {{-- 会社名（カナ） --}}
+        {{-- 企業名（カナ） --}}
         <div>
           <x-input-label for="company_name_kana">
-            会社名（カナ） <span class="text-red-500">*</span>
+            企業名（カナ） <span class="text-red-500">*</span>
           </x-input-label>
           <x-text-input
             id="company_name_kana"
@@ -83,25 +83,38 @@
             pattern="^[ァ-ヶー－\s　]+$"
             required
             placeholder="カタカナ"
-            :value="old('company_name_kana', $company->company_name_kana ?? '')"
+            :value="old('company_name_kana', $company?->company_name_kana ?? '')"
             translate="no"
             autocapitalize="off" autocorrect="off" spellcheck="false" />
           <x-input-error :messages="$errors->get('company_name_kana')" class="mt-2" />
         </div>
       </div>
 
-      {{-- 事業内容 / 紹介 --}}
+      {{-- 事業内容 / 紹介（WYSIWYG） --}}
       <div>
         <x-input-label for="description">
           事業内容 / 紹介 <span class="text-red-500">*</span>
         </x-input-label>
-        <textarea id="description" name="description" rows="5" maxlength="2000" required
-          class="mt-1 block w-full border-gray-300 rounded-md"
+
+        {{-- trix は hidden input に入れる --}}
+        <input
+          id="description"
+          type="hidden"
+          name="description"
+          value="{{ old('description', $company?->profile?->description ?? $company?->description ?? '') }}"
           translate="no"
-          autocapitalize="off" autocorrect="off" spellcheck="false">{{ old('description', $company->description ?? '') }}</textarea>
+          autocapitalize="off" autocorrect="off" spellcheck="false">
+
+        <trix-editor
+          input="description"
+          class="mt-1 block w-full border border-gray-300 rounded-md bg-white"
+          translate="no"
+          autocapitalize="off" autocorrect="off" spellcheck="false"></trix-editor>
+
         <x-input-error :messages="$errors->get('description')" class="mt-2" />
-        <p class="text-xs text-gray-500 mt-1">最大 2000 文字</p>
+        <p class="text-xs text-gray-500 mt-1">最大 2000 文字（WYSIWYG）</p>
       </div>
+
 
       {{-- ロゴ（任意） --}}
       <div class="flex items-start gap-6">
@@ -113,7 +126,7 @@
             translate="no">
           <x-input-error :messages="$errors->get('logo')" class="mt-2" />
 
-          @if(!empty($company->logo_path ?? null))
+          @if(!empty($company?->logo_path))
           <label class="inline-flex items-center gap-2 mt-3 text-sm">
             <input type="checkbox" name="remove_logo" value="1" translate="no">
             ロゴを削除する
@@ -122,7 +135,7 @@
         </div>
 
         @php
-        $path = $company->logo_path ?? null;
+        $path = $company?->logo_path ?? null;
         $logoUrl = $path && \Illuminate\Support\Facades\Storage::disk('public')->exists($path)
         ? \Illuminate\Support\Facades\Storage::disk('public')->url($path)
         : asset('images/no-image.svg');
@@ -219,7 +232,7 @@
         </div>
       </div>
 
-      {{-- 会社情報（必須） --}}
+      {{-- 企業情報（必須） --}}
       <div class="grid md:grid-cols-3 gap-4">
         <div>
           <x-input-label for="industry">
@@ -272,3 +285,74 @@
     }
   </script>
 </x-app-layout>
+
+
+<style>
+  /* ===== Trix toolbar active state fix (daisyUI/Tailwind対策) ===== */
+
+  trix-toolbar .trix-button {
+    border: 1px solid #d1d5db !important;
+    background: #fff !important;
+    color: #111827 !important;
+  }
+
+  trix-toolbar .trix-button.trix-active {
+    background: #e5e7eb !important;
+    border-color: #6b7280 !important;
+    box-shadow: inset 0 0 0 1px #6b7280 !important;
+  }
+
+  trix-toolbar .trix-button:hover:not(.trix-active) {
+    background: #f3f4f6 !important;
+  }
+
+  trix-editor:focus {
+    outline: 2px solid #93c5fd;
+    outline-offset: 2px;
+  }
+
+  /* ===== リストの marker を確実に表示 ===== */
+  trix-editor ul,
+  trix-editor ol {
+    list-style: revert !important;
+    padding-left: 1.5rem !important;
+    margin: 0.75rem 0 !important;
+  }
+
+  trix-editor li {
+    display: list-item !important;
+    margin: 0.25rem 0 !important;
+  }
+
+  trix-editor ul ul,
+  trix-editor ol ol,
+  trix-editor ul ol,
+  trix-editor ol ul {
+    margin-top: 0.5rem !important;
+    margin-bottom: 0.5rem !important;
+    padding-left: 1.5rem !important;
+  }
+
+  /* ===== 引用・コード等も見えやすく ===== */
+  trix-editor blockquote {
+    border-left: 4px solid #d1d5db !important;
+    padding-left: 1rem !important;
+    color: #374151 !important;
+    margin: 0.75rem 0 !important;
+    background: #f9fafb !important;
+  }
+
+  trix-editor pre {
+    background: #111827 !important;
+    color: #f9fafb !important;
+    padding: 0.75rem !important;
+    border-radius: 0.5rem !important;
+    overflow: auto !important;
+    margin: 0.75rem 0 !important;
+  }
+
+  trix-editor a {
+    text-decoration: underline !important;
+    color: #2563eb !important;
+  }
+</style>

@@ -3,20 +3,24 @@
 namespace App\Filament\Resources\CompanyResource\Pages;
 
 use App\Filament\Resources\CompanyResource;
-use Filament\Actions;
 use Filament\Resources\Pages\ListRecords;
 
 class ManageCompanies extends ListRecords
 {
     protected static string $resource = CompanyResource::class;
 
+    public function getTitle(): string
+    {
+        return '企業一覧';
+    }
+
+    public function getBreadcrumbs(): array
+    {
+        return [];
+    }
+
     protected function getHeaderActions(): array
     {
-        return [
-            Actions\Action::make('back')
-                ->label('ダッシュボードへ')
-                ->icon('heroicon-o-home')
-                ->url('/admin/dashboard'),
-        ];
+        return [];
     }
 }

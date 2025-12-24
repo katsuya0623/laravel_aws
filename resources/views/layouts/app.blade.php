@@ -17,7 +17,6 @@
 
     {{-- ビルド済みの追加スタイル（必要なものだけ）。重複は削除 --}}
     <link rel="stylesheet" href="/build/tw.css?v=1756707288">
-    <link rel="stylesheet" href="/build/override.css?v=1756708119">
 
     {{-- ページごとに <head> に追加したいとき用 --}}
     @stack('head')

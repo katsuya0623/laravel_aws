@@ -83,33 +83,50 @@ class CompanyController extends Controller
 
         abort_if(!$row, 404);
 
-        // ロゴURLを確実に解決
-        $logoUrl = $this->resolveLogoUrl($schema, (array) $row);
+        $rowArr = (array) $row;
 
-        // 一覧と同じ形で company オブジェクト化
-        $company = (object) $row;
-
-        // ★ 追加：company_profiles から詳細情報を取得（会社名で突合）
+        // ✅ ここが重要：profile は company_id で取得（name一致はやめる）
         $profile = null;
-        if (!empty($company->name)) {
-            $profile = CompanyProfile::where('company_name', $company->name)->first();
+        if ($schema->hasTable('company_profiles')) {
+            if (!empty($rowArr['id']) && $schema->hasColumn('company_profiles', 'company_id')) {
+                $profile = CompanyProfile::where('company_id', (int) $rowArr['id'])->first();
+            } else {
+                // 旧構造救済：company_id が無い環境だけ name で探す
+                if (!empty($rowArr['name']) && $schema->hasColumn('company_profiles', 'company_name')) {
+                    $profile = CompanyProfile::where('company_name', $rowArr['name'])->first();
+                }
+            }
         }
+
+        // ロゴURLを確実に解決（profile も考慮）
+        $logoUrl = $this->resolveLogoUrl($schema, $rowArr, $profile);
+
+        // company オブジェクト化
+        $company = (object) $rowArr;
 
         return view('front.company.show', [
             'company' => $company,
-            'profile' => $profile,   // ← これを Blade 側で使う
-            'logoUrl' => $logoUrl,   // Blade 側ではこれを <img src> に
+            'profile' => $profile,
+            'logoUrl' => $logoUrl,
         ]);
     }
 
-    /** ★ 追加：company_profiles と突合して完了企業だけに絞る */
+    /** ★ company_profiles と突合して完了企業だけに絞る */
     private function joinCompletedProfiles($schema, $q): void
     {
         if (!$schema->hasTable('company_profiles')) return;
         if (!$schema->hasColumn('company_profiles', 'is_completed')) return;
+
+        // ✅ まず company_id join を優先
+        if ($schema->hasColumn('company_profiles', 'company_id') && $schema->hasColumn('companies', 'id')) {
+            $q->join('company_profiles as cp', 'cp.company_id', '=', 'companies.id')
+              ->where('cp.is_completed', 1);
+            return;
+        }
+
+        // 旧構造救済：name join
         if (!$schema->hasColumn('companies', 'name')) return;
 
-        // company_profiles の会社名カラム（company_name / name）を自動判定
         $cpNameCol = $schema->hasColumn('company_profiles', 'company_name')
             ? 'company_name'
             : ($schema->hasColumn('company_profiles', 'name') ? 'name' : null);
@@ -152,7 +169,6 @@ class CompanyController extends Controller
         $cols = [];
         foreach (['id','name','slug','updated_at'] as $c) {
             if ($schema->hasColumn('companies', $c)) {
-                // SELECT companies.id as id, ... という形で曖昧さ回避
                 $cols[] = DB::raw("companies.$c as $c");
             }
         }
@@ -163,14 +179,12 @@ class CompanyController extends Controller
     /**
      * 会社ロゴURLを解決する
      * - companies 側にロゴ系カラムがあれば優先
-     * - 無ければ CompanyProfile(company_name 一致) の logo_path を使用
-     * - パスを URL に変換（/storage シンボリックリンク対応）
+     * - 無ければ profile.logo_path を使用（company_id優先で取得済み）
      */
-    private function resolveLogoUrl($schema, array $row): string
+    private function resolveLogoUrl($schema, array $row, ?CompanyProfile $profile = null): string
     {
         $path = null;
 
-        // 1) companies 側のよくあるロゴ列
         foreach (['logo_path', 'logo', 'thumbnail_path'] as $c) {
             if ($schema->hasColumn('companies', $c) && !empty($row[$c] ?? null)) {
                 $path = $row[$c];
@@ -178,28 +192,16 @@ class CompanyController extends Controller
             }
         }
 
-        // 2) 無ければ CompanyProfile を name で突合
-        if (!$path && !empty($row['name'])) {
-            $profile = CompanyProfile::where('company_name', $row['name'])->first();
-            if ($profile && !empty($profile->logo_path)) {
-                $path = $profile->logo_path;
-            }
+        if (!$path && $profile && !empty($profile->logo_path)) {
+            $path = $profile->logo_path;
         }
 
-        // 3) URL に解決
         if ($path) {
-            if (preg_match('#^https?://#', $path)) {
-                return $path;                // 既にフルURL
-            }
-            if (Storage::disk('public')->exists($path)) {
-                return Storage::disk('public')->url($path);  // /storage/...
-            }
-            if (file_exists(public_path($path))) {
-                return asset($path);         // public直下
-            }
+            if (preg_match('#^https?://#', $path)) return $path;
+            if (Storage::disk('public')->exists($path)) return Storage::disk('public')->url($path);
+            if (file_exists(public_path($path))) return asset($path);
         }
 
-        // 4) フォールバック
         return asset('images/noimage.svg');
     }
 }

@@ -6,7 +6,11 @@ use App\Http\Controllers\Admin\Auth\LoginController as AdminLogin;
 Route::prefix('admin')->as('admin.')->group(function () {
     Route::middleware('guest:admin')->group(function () {
         Route::get('login',  [AdminLogin::class, 'show'])->name('login');
-        Route::post('login', [AdminLogin::class, 'login'])->name('login.post');
+
+        // ★ ログイン POST だけ制限を掛ける
+        Route::post('login', [AdminLogin::class, 'login'])
+            ->middleware('throttle:admin-login')
+            ->name('login.post');
     });
 
     Route::post('logout', [AdminLogin::class, 'logout'])

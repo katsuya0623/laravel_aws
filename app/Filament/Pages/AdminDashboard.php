@@ -23,7 +23,7 @@ class AdminDashboard extends Dashboard
         return [
             AdminStatsOverview::class,
             PopularJobsTable::class,
-            AdminQuickLinks::class,
+            // AdminQuickLinks::class, ← これをコメントアウト
         ];
     }
 

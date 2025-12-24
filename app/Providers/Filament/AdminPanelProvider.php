@@ -33,7 +33,10 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->authGuard('admin')
-            ->brandName('nibi Admin')
+            ->brandName('')
+            ->brandLogo(fn () => asset('images/logo-dousoko.png'))
+            ->brandLogoHeight('2.5rem')
+
             ->colors(['primary' => Color::Indigo])
 
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
@@ -65,7 +68,7 @@ class AdminPanelProvider extends PanelProvider
 
             ->navigationItems([
                 // ▼ Post
-                NavigationItem::make('記事')
+                NavigationItem::make('記事一覧')
                     ->group('Post')
                     ->icon('heroicon-o-document-text')
                     ->url(fn() => PostResource::getUrl('index'))
@@ -75,7 +78,7 @@ class AdminPanelProvider extends PanelProvider
                 // ▼ Management（ダッシュボードと同じ順） ---------------------
 
                 // ① エンドユーザー
-                NavigationItem::make('エンドユーザー')
+                NavigationItem::make('求職者一覧')
                     ->group('Management')
                     ->icon('heroicon-o-user-group')
                     ->url(fn() => EndUserResource::getUrl('index'))
@@ -122,9 +125,7 @@ class AdminPanelProvider extends PanelProvider
                 ShareErrorsFromSession::class,
                 VerifyCsrfToken::class,
                 SubstituteBindings::class,
-                                // ★ これを追加（admin用レートリミット）
-                'throttle:admin-login',
-                
+
             ])
             ->authMiddleware([Authenticate::class]);
     }

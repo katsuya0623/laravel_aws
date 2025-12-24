@@ -22,7 +22,12 @@ class Company extends Model
         'description',
     ];
 
-    protected $appends = ['logo_url'];
+    // ✅ 表示用アクセサを追加
+    protected $appends = [
+        'logo_url',
+        'display_company_name',
+        'display_description',
+    ];
 
     // （任意）N+1回避したい場合はコメントアウト解除
     // protected $with = ['profile'];
@@ -92,6 +97,36 @@ class Company extends Model
     /* =============================
        アクセサ
        ============================= */
+
+    /**
+     * ✅ 企業名（表示用）
+     * - profile.company_name があればそれを優先
+     * - 無ければ companies.name
+     */
+    public function getDisplayCompanyNameAttribute(): string
+    {
+        $profileName = $this->profile?->company_name;
+        if (filled($profileName)) {
+            return (string) $profileName;
+        }
+
+        return (string) ($this->name ?? '');
+    }
+
+    /**
+     * ✅ 事業内容 / 紹介（表示用）
+     * - profile.description があればそれを優先
+     * - 無ければ companies.description
+     */
+    public function getDisplayDescriptionAttribute(): string
+    {
+        $profileDesc = $this->profile?->description;
+        if (filled($profileDesc)) {
+            return (string) $profileDesc;
+        }
+
+        return (string) ($this->description ?? '');
+    }
 
     /**
      * ロゴURLを堅牢に解決

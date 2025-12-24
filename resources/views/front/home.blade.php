@@ -7,60 +7,69 @@ $items = collect($latest ?? ($posts ?? []));
 
 // URL正規化
 $normalize = function (?string $p): ?string {
-if (!$p) return null;
-$p = trim($p);
-if (preg_match('#^https?://#i', $p)) return $p;
-if (preg_match('#/storage/app/public/(.+)$#', $p, $m)) return asset('storage/'.$m[1]);
-if (\Illuminate\Support\Str::startsWith($p, '/')) return $p;
-if (\Illuminate\Support\Str::startsWith($p, 'storage/')) return asset($p);
-if (\Illuminate\Support\Str::startsWith($p, 'public/')) {
-$rel = ltrim(\Illuminate\Support\Str::after($p, 'public/'), '/');
-return asset('storage/'.$rel);
-}
-if (\Illuminate\Support\Facades\Storage::disk('public')->exists($p)) return asset('storage/'.ltrim($p,'/'));
-if (file_exists(public_path($p))) return asset($p);
-if (preg_match('#https?://[^/]+/(storage/.+)$#i', $p, $m)) return '/'.$m[1];
-return $p;
+    if (!$p) return null;
+    $p = trim($p);
+    if (preg_match('#^https?://#i', $p)) return $p;
+    if (preg_match('#/storage/app/public/(.+)$#', $p, $m)) return asset('storage/'.$m[1]);
+    if (\Illuminate\Support\Str::startsWith($p, '/')) return $p;
+    if (\Illuminate\Support\Str::startsWith($p, 'storage/')) return asset($p);
+    if (\Illuminate\Support\Str::startsWith($p, 'public/')) {
+        $rel = ltrim(\Illuminate\Support\Str::after($p, 'public/'), '/');
+        return asset('storage/'.$rel);
+    }
+    if (\Illuminate\Support\Facades\Storage::disk('public')->exists($p)) return asset('storage/'.ltrim($p,'/'));
+    if (file_exists(public_path($p))) return asset($p);
+    if (preg_match('#https?://[^/]+/(storage/.+)$#i', $p, $m)) return '/'.$m[1];
+    return $p;
 };
 
 // 本文から画像抽出（強化版）
 $extractFirstImg = function ($raw) {
-if (!$raw) return null;
-$s = is_string($raw) ? $raw : (is_array($raw) ? json_encode($raw, JSON_UNESCAPED_UNICODE) : strval($raw));
-$s = html_entity_decode($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-if (preg_match('#<img[^>]+(?:data-src|src)=["\']([^"\']+)["\']#i', $s, $m)) return $m[1];
-  if (preg_match('#<(?:source|img)[^>]+srcset=["\']([^"\']+)["\']#i', $s, $m)) {
-    $first = preg_split('/\s|,/', trim($m[1]))[0] ?? null; if ($first) return $first;
+    if (!$raw) return null;
+    $s = is_string($raw) ? $raw : (is_array($raw) ? json_encode($raw, JSON_UNESCAPED_UNICODE) : strval($raw));
+    $s = html_entity_decode($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    if (preg_match('#<img[^>]+(?:data-src|src)=["\']([^"\']+)["\']#i', $s, $m)) return $m[1];
+    if (preg_match('#<(?:source|img)[^>]+srcset=["\']([^"\']+)["\']#i', $s, $m)) {
+        $first = preg_split('/\s|,/', trim($m[1]))[0] ?? null;
+        if ($first) return $first;
     }
     if (preg_match('#!\[[^\]]*\]\(([^)]+)\)#', $s, $m)) return $m[1];
     if (preg_match('#"src"\s*:\s*"([^"]+\.(?:png|jpe?g|gif|webp|svg))"#i', $s, $m)) return $m[1];
     if (preg_match('#background-image\s*:\s*url\((["\']?)([^)\'"]+)\1\)#i', $s, $m)) return $m[2];
     return null;
-    };
+};
 
-    // 日付
-    $dateTextOf = function ($post) {
+// 日付
+$dateTextOf = function ($post) {
     try {
-    $raw = $post->published_at ?? $post->created_at ?? null;
-    return $raw ? \Illuminate\Support\Carbon::parse($raw)->format('Y-m-d') : '';
-    } catch (\Throwable $e) { return ''; }
-    };
+        $raw = $post->published_at ?? $post->created_at ?? null;
+        return $raw ? \Illuminate\Support\Carbon::parse($raw)->format('Y-m-d') : '';
+    } catch (\Throwable $e) {
+        return '';
+    }
+};
 
-    // サムネ
-    $thumbOf = function ($post) use ($normalize, $extractFirstImg) {
+// サムネ
+$thumbOf = function ($post) use ($normalize, $extractFirstImg) {
     $thumb = null;
     foreach ([
-    'thumbnail_url','thumbnail_path','thumbnail',
-    'cover_image','cover_image_path','cover_image_url',
-    'image','image_path','image_url',
-    'featured_image','featured_image_url','featured_image_path',
+        'thumbnail_url','thumbnail_path','thumbnail',
+        'cover_image','cover_image_path','cover_image_url',
+        'image','image_path','image_url',
+        'featured_image','featured_image_url','featured_image_path',
     ] as $col) {
-    if (!empty($post->{$col})) { $thumb = $post->{$col}; break; }
+        if (!empty($post->{$col})) {
+            $thumb = $post->{$col};
+            break;
+        }
     }
     if (!$thumb) {
-    foreach (['content_html','content','body','html','text','markdown','content_rendered'] as $cf) {
-    if (!empty($post->{$cf})) { $thumb = $extractFirstImg((string)$post->{$cf}); if ($thumb) break; }
-    }
+        foreach (['content_html','content','body','html','text','markdown','content_rendered'] as $cf) {
+            if (!empty($post->{$cf})) {
+                $thumb = $extractFirstImg((string)$post->{$cf});
+                if ($thumb) break;
+            }
+        }
     }
     $thumb = $normalize($thumb);
     if ($thumb) return $thumb;
@@ -69,24 +78,68 @@ if (preg_match('#<img[^>]+(?:data-src|src)=["\']([^"\']+)["\']#i', $s, $m)) retu
     $title = (string)($post->title ?? 'P');
     $initial = strtoupper(mb_substr($title, 0, 1, 'UTF-8'));
     $svg = '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">'
-      . '
-      <rect width="640" height="360" rx="16" fill="#F1F5F9" />'
-      . '<text x="50%" y="58%" text-anchor="middle" font-family="system-ui,-apple-system,Segoe UI,Roboto" '
-         . ' font-size="160" fill="#94A3B8">'.$initial.'</text>
-    </svg>';
+        . '<rect width="640" height="360" rx="16" fill="#F1F5F9" />'
+        . '<text x="50%" y="58%" text-anchor="middle" font-family="system-ui,-apple-system,Segoe UI,Roboto" '
+        . ' font-size="160" fill="#94A3B8">'.$initial.'</text></svg>';
     return 'data:image/svg+xml;utf8,'.rawurlencode($svg);
-    };
+};
 
-    // URL
-    $postUrlOf = function ($post) {
+// URL
+$postUrlOf = function ($post) {
     $param = $post->slug ?? $post->id ?? null;
     return (\Route::has('front.posts.show') && $param) ? route('front.posts.show', $param) : '#';
-    };
+};
 
-    // HERO と残り
-    $hero = $items->take(4);
-    $rest = $items->slice(4)->values();
-    @endphp
+// HEROとrestの分離（← ここが重要！）
+$hero = $items->take(4);
+$rest = $items->slice(4)->values();
+
+// スポンサード記事
+$sponsored = \App\Models\Post::query()
+    ->where('is_sponsored', 1)
+    ->where('status', 'published')
+    ->latest('published_at')
+    ->take(3)
+    ->get();
+@endphp
+
+
+    @if ($sponsored->count())
+    <section class="mb-10 grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
+      {{-- 左：スポンサー記事（最大3件） --}}
+      <div class="lg:col-span-3 grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        @foreach ($sponsored as $post)
+        <a href="{{ $postUrlOf($post) }}"
+          class="group block rounded-2xl bg-white border shadow-sm hover:shadow-md transition">
+          <div class="aspect-[16/9] overflow-hidden rounded-t-2xl">
+            <img src="{{ $thumbOf($post) }}" alt="{{ $post->title ?? '' }}"
+              class="w-full h-full object-cover group-hover:scale-[1.02] transition">
+          </div>
+          <div class="p-4">
+            <p class="text-[10px] text-rose-500 mb-1">PR記事 | {{ $post->sponsor_company_id ? '提供企業名' : '提供不明' }}</p>
+            <h3 class="font-semibold text-sm leading-snug line-clamp-2">{{ $post->title }}</h3>
+          </div>
+        </a>
+        @endforeach
+      </div>
+
+      {{-- 右：説明ボックス --}}
+      <aside class="rounded-2xl p-6 border text-white bg-[#C23A41]">
+        <h2 class="text-lg font-bold text-white">ドウソコ って何？</h2>
+        <p class="mt-2 text-sm leading-relaxed text-white">
+          どこで働くか、どう生きるか。<br>
+          東京でも、地方でも。<br>
+          "見栄え" じゃなく "本当に自分に合う生き方" を選びたいあなたに。<br>
+          仕事・住まい・人間関係・暮らし...就職活動だけじゃわからないリアルを届けます。
+        </p>
+        <a href="{{ \Route::has('front.posts.index') ? route('front.posts.index') : '#' }}"
+          class="mt-4 inline-flex items-center justify-center rounded-full bg-white text-[#C23A41] px-4 py-1.5 text-sm font-semibold shadow-sm hover:opacity-90 transition">
+          もっと見る
+        </a>
+      </aside>
+    </section>
+    @endif
+
 
 
 

@@ -60,15 +60,18 @@ use App\Http\Controllers\CompanyEditController;
 Route::middleware('guest')->group(function () {
     Route::get('/register', [RegisteredUserController::class, 'create'])->name('register');
     Route::post('/register', [RegisteredUserController::class, 'store']);
+
+    // ===== Login =====
+    Route::get('/login', [WebLoginController::class, 'create'])->name('login');
+
+    // ★ フロントログイン POST にのみレート制限を適用
+    Route::post('/login', [WebLoginController::class, 'store'])
+        ->middleware('throttle:login');
 });
 
-Route::middleware('guest')->get('/login', [WebLoginController::class, 'create'])->name('login');
-
-// ★ throttle:login を追加（フロントのログイン失敗制限）
-Route::middleware(['guest', 'throttle:login'])
-    ->post('/login', [WebLoginController::class, 'store']);
-
+// ===== Logout =====
 Route::post('/logout', [WebLoginController::class, 'destroy'])->name('logout');
+
 
 // ===== Front base =====
 Route::get('/', [LandingController::class, 'index'])->name('home');
@@ -127,10 +130,12 @@ Route::get('/register-intended', function (Request $request) {
 // ===== Front: Company =====
 Route::prefix('company')->name('front.company.')->group(function () {
     Route::get('/', [FCompanyController::class, 'index'])->name('index');
-    Route::get('/{slugOrId}', [FCompanyController::class, 'show'])
-        ->where('slugOrId', '^([A-Za-z0-9\-]+|\d+)$')
+
+    // ✅ slug でCompanyを引く（IDも許容したいなら後述のbind方式）
+    Route::get('/{company:slug}', [FCompanyController::class, 'show'])
         ->name('show');
 });
+
 
 // ===== Front: Jobs =====
 Route::prefix('recruit_jobs')->group(function () {
